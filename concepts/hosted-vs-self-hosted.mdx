@@ -1,0 +1,89 @@
+---
+title: "Hosted vs self-hosted"
+description: "100% code-parity commitment between Glide Cloud and self-hosted instances, with three documented exceptions (Chainalysis ToS, Privy Multi-tenant, mobile App Store distribution)."
+icon: 'scale-balanced'
+---
+
+
+The OSS Cathedral plan commits to **100% code parity** between Glide Cloud and self-hosted instances — with explicit documented exceptions. This file is the source of truth for what's the same, what's different, and why.
+
+## Code parity
+
+The web app, mobile app, MCP gateway, all 21 connectors, all 6 hero skills, the policy engine, the grant wrapper, the schemas, the secrets-manager, the CLI, and the create-glide-app scaffolder all ship under MIT in this repo. There is **no `packages/enterprise/`** edition. No feature in code is gated by license, tenant tier, or feature flag based on whether you're on Glide Cloud or self-hosted.
+
+The full list of code surfaces:
+
+- `apps/web/` — Next.js 16 origin app (consumer + admin + agent skill catalog at `/skills`)
+- `apps/mcp/` — MCP gateway (22 tools across read/write/treasury endpoints)
+- `apps/mobile/` — Expo / React Native mobile app
+- `packages/connectors/<slug>/` × 21 — vendor adapters
+- `packages/skills/<id>/` × 6 — agent skill packages
+- `@glide/policy-engine`, `@glide/schemas`, `@glide/grant-wrapper`, `@glide/secrets-scan` — Headless platform
+- `@repo/secrets`, `@repo/cli`, `create-glide-app` — self-host quickstart
+
+If a code path runs in Glide Cloud, it runs in your self-hosted deploy too. If a UI screen renders in Glide Cloud, you can render it locally with `GLIDE_USE_MOCK_CONNECTORS=true pnpm --filter web dev`.
+
+## What Glide Cloud runs that you operate yourself
+
+The differences are **operational**, not code-level.
+
+| Layer                       | Glide Cloud                                                                                                                                                   | Self-Hosted                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **Vendor seats**            | Glide holds umbrella contracts with Privy, Bridge, Noah, Chainalysis, Alchemy, Coinbase, Ory. Hosted users get the whole stack on day one.                    | You bring your own Privy Multi-tenant tenant + each individual vendor contract you want to use.                            |
+| **Managed ops**             | We run upgrades, security patches, Postgres backups, Redis failover, Inngest scaling, multi-region failover.                                                  | You own uptime + backups + scaling.                                                                                        |
+| **Compliance packaging**    | Signed audit-log exports, SOC 2 report bundles, vendor compliance artifacts collected in one place.                                                           | You assemble your own compliance bundle from per-connector COMPLIANCE.md + your audit-log retention.                       |
+| **Support + SLAs**          | Named support contact, guaranteed response times, incident escalation.                                                                                        | GitHub issues + best-effort. Discord / Slack lands with M5.5+.                                                             |
+| **Mobile distribution**     | Glide Cloud's App Store / Play Store binaries point at our backend.                                                                                           | Self-host = self-build. EAS bakes `EXPO_PUBLIC_API_URL` at build time; you do your own EAS build pointing at your backend. |
+| **Trusted Partner program** | Regulated partners pay to have their connector promoted to `verified` tier with marketplace placement + co-marketing. The connector code itself is still MIT. | Promotion ladder is identical (community → verified → core), but you administer it for your own tenant.                    |
+
+## Documented parity exceptions
+
+Per the OSS plan §M2 §"Foundational Decisions" + Codex review fix #10, three honest exceptions to "100% code parity":
+
+### 1. Chainalysis live adapter (counsel-blocked redistribution)
+
+**Status:** ⚠️ Conditional. As of M2 ship, the Chainalysis adapter ships in OSS at `packages/connectors/chainalysis/` with a prominent `DISCLAIMER.md` stating users must hold their own Chainalysis contract.
+
+**Risk:** If Chainalysis counsel objects to OSS-distributed adapters that call their API even with the disclaimer, Glide Cloud would continue shipping the live adapter while OSS would ship a skeleton interface + the existing `chainalysis-mock` only. We have not received that objection as of this writing; the live adapter is in OSS today.
+
+**Mitigation if blocked:** OSS users would set `SCREENING_PROVIDER=chainalysis-mock` (deterministic fixtures) or `SCREENING_PROVIDER=permissive` (no-op + red banner) until they implement an alternative `screening` capability (TRM Labs, Elliptic, etc.).
+
+### 2. Privy Multi-tenant requirement (vendor-only OSS)
+
+OSS is Privy-only in v1. There is no `auth-local` / Better-Auth fallback. Self-hosters without a Privy Multi-tenant account cannot run Glide today.
+
+**Why:** Per the M2 OSS plan §11, agent banking's programmable-signing-policy is Privy-specific. The alternative (Turnkey sub-org per entity) forces regulatory re-analysis the OSS plan doesn't want to inherit.
+
+**Future:** If Privy's Multi-tenant product changes pricing or availability, OSS users are exposed. Acceptable trade-off per the ceremony review; documented prominently in `docs/SELF_HOSTING.md`.
+
+### 3. Mobile App Store distribution (platform-controlled)
+
+iOS `DCAppAttestService` + Android Play Integrity require Apple / Google developer accounts AND attestation service setup. Glide Cloud's mobile binaries are signed with our developer accounts; self-hosters need their own.
+
+**Posture:** The `AttestationProvider` capability ships with three implementations: iOS (Apple PKI), Android (Play Integrity), and `none` (red admin banner saying attestation is disabled). Self-hosters who don't run their own EAS build set `ATTESTATION=none`.
+
+**Future:** Once App Store / Play Store policies mature for OSS-flavored fork distribution, this exception narrows. Today the platform-attestation requirement IS the gap.
+
+## What's NOT a parity exception
+
+These are sometimes assumed to be exceptions but are NOT:
+
+- **The Trust Console UI** — lands in OSS at M4 once Glide Cloud has soaked Trust Console v1 for 12 weeks. Identical code; identical UI; the gating is "the schemas need to be production-hardened before publication."
+- **Agent skills marketplace** — already shipped at `apps/web/src/app/(public)/skills/` (PR153). Identical render in Glide Cloud + self-hosted.
+- **The MCP gateway** — `apps/mcp/` ships in OSS. Identical wire format (MCP spec 2025-11-25). Identical 22-tool surface.
+- **Per-connector trust tiers** — promotion ladder works identically. The promotion _administration_ differs (we approve verified-tier on Glide Cloud; you approve verified-tier in your own deployment).
+
+## Versioning + upgrade contract
+
+Self-hosters should track the `main` branch tags. Major-version bumps that change schema or break connector contracts will be called out in `CHANGELOG.md` with explicit migration steps. Migration files under `apps/web/drizzle/*.sql` are the source of truth (NOT `_journal.json`); apply via `bash scripts/run-agent-platform-migrations.sh` per `CLAUDE.md`.
+
+## How we keep this file honest
+
+This file is reviewed every quarter (Glide Cloud release-train) AND on every milestone PR that touches `apps/web` or `packages/connectors/<vendor>/`. If you ever discover a Glide Cloud feature that isn't in OSS, file an issue — the parity commitment is real.
+
+## Reference
+
+- `docs/SELF_HOSTING.md` — operator runbook
+- `docs/agents/SELF_HOSTING.md` — agent platform self-host
+- `apps/mcp/COMPLIANCE.md` — MCP gateway compliance posture
+- `CONTRIBUTING.md` — partner-PR flow + trust tiers

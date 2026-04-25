@@ -1,0 +1,70 @@
+---
+title: "Grant (draft)"
+description: "OAuth bearer grant JWT claims. RFC 8707 resource-indicator-bound; max TTL 60min."
+icon: 'key'
+---
+
+The bearer grant agent runtimes carry on every MCP tool call. Issued by the OAuth Authorization Server (Ory Hydra in production; HMAC-SHA256 in development). Verified by `@glide/grant-wrapper` on every tool invocation per the F3 IRON RULE.
+
+## Canonical URL
+
+[`https://schemas.glide.dev/agent-banking/draft/grant.json`](https://schemas.glide.dev/agent-banking/draft/grant.json) (alias of `scoped-grant-claims`).
+
+## Required claims
+
+| Claim | Type | Meaning |
+| --- | --- | --- |
+| `sub` | `string` | Principal user ID (the human). |
+| `act.sub` | `string` | Agent principal ID (the acting agent). |
+| `azp` | `string` | Authorized party — the registered MCP `client_id`. |
+| `aud.vault_id` | `string` | Scoped resource vault (RFC 8707 resource indicator). |
+| `aud.entity_id` | `string` | Scoped resource entity. |
+| `scope` | `string` (space-separated) | Closed-vocab `SkillScope` set. |
+| `policy_version` | `number` | Envelope version at grant issue time. F5 mismatch detection. |
+| `iat` | `number` | Issued at (epoch seconds). |
+| `nbf` | `number` | Not before (epoch seconds). |
+| `exp` | `number` | Expiry (epoch seconds). **Max TTL: 3600 (60 minutes).** |
+| `jti` | `string` | Server-side grant ID for revocation. |
+
+## Validation contract
+
+`@glide/grant-wrapper` re-validates every grant on every tool invocation:
+
+1. **JWT signature** — verified against the AS's JWKS.
+2. **`exp` not in past** — bearer expiry.
+3. **`exp - iat ≤ 3600`** — max TTL enforcement.
+4. **`aud.vault_id` present + matches the resource indicator on the request** — RFC 8707 enforcement.
+5. **`act.sub` corresponds to a registered agent** — DB lookup.
+6. **F3 IRON RULE — fresh-read tenant verification.** Re-reads the principal's tenant from DB. Cached grant alone NEVER authorizes.
+7. **`policy_version` matches the current envelope** — mismatch raises `PolicyStaleError` (F5).
+
+## Step-up extension
+
+When the requested tool action exceeds the envelope's `step_up_threshold_usd_cents`, the gateway returns JSON-RPC `-32003` with a `step_up_url`. The principal completes biometric approval; the gateway issues a `step_up_sigil` (single-use, F7); the agent retries with the sigil.
+
+## Example
+
+```json
+{
+  "iss": "https://auth.glide.example.com",
+  "sub": "user_01H7...",
+  "act": { "sub": "agent_01H8..." },
+  "azp": "client_01H9...",
+  "aud": {
+    "vault_id": "vault_01HA...",
+    "entity_id": "entity_01HB..."
+  },
+  "scope": "accounts:read payments:initiate audit:stream",
+  "policy_version": 7,
+  "iat": 1730000000,
+  "nbf": 1730000000,
+  "exp": 1730003600,
+  "jti": "grant_01HC..."
+}
+```
+
+## Reading list
+
+- [OAuth flow](/agents/oauth-flow) — RFC 7591 + 8707 + PKCE walkthrough.
+- [AgentPolicyEnvelope](/standards/agent-policy-envelope) — what `policy_version` references.
+- [Money-safety contracts](/concepts/money-safety-contracts) — F3 + F5.

@@ -1,0 +1,110 @@
+---
+title: "OAuth flow"
+description: "End-to-end authorization_code + PKCE flow for MCP clients. RFC 7591 dynamic client registration, RFC 8707 resource-indicator-bound tokens, RFC 9728 discovery."
+icon: 'key'
+---
+
+
+End-to-end authorization_code + PKCE flow for MCP clients.
+
+## 1. Dynamic Client Registration
+
+```
+POST https://auth.glide.co/oauth2/register
+Content-Type: application/json
+
+{
+  "client_name": "My Agent Runtime",
+  "redirect_uris": ["https://my-runtime.example/oauth/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "client_secret_post",
+  "scope": "accounts:read payments:initiate payments:simulate audit:stream"
+}
+```
+
+Response:
+
+```json
+{
+  "client_id": "client-01H...",
+  "client_secret": "sk_live_...",
+  "client_id_issued_at": 1714...,
+  "redirect_uris": ["https://my-runtime.example/oauth/callback"]
+}
+```
+
+## 2. Authorize (end-user redirect)
+
+```
+GET https://auth.glide.co/oauth2/authorize
+  ?response_type=code
+  &client_id=client-01H...
+  &redirect_uri=https://my-runtime.example/oauth/callback
+  &code_challenge=<SHA256(code_verifier)>
+  &code_challenge_method=S256
+  &scope=accounts:read payments:initiate
+  &resource=urn:glide:vault:abc-123
+  &state=<csrf-token>
+```
+
+The user lands on the Glide step-up sheet, authenticates via Privy (Face-ID + email OTP as needed), and authorizes the requested scope+resource binding. Glide redirects back with `?code=...&state=...`.
+
+## 3. Token exchange
+
+```
+POST https://auth.glide.co/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&code=<code>
+&redirect_uri=https://my-runtime.example/oauth/callback
+&client_id=client-01H...
+&client_secret=sk_live_...
+&code_verifier=<verifier>
+```
+
+Response:
+
+```json
+{
+  "access_token": "<JWT>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "...",
+  "scope": "accounts:read payments:initiate",
+  "jti": "grant-01H..."
+}
+```
+
+## 4. Call MCP tools
+
+```
+POST https://mcp.glide.co/write
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+  "name":"payments.initiate",
+  "arguments":{
+    "counterparty":{"address":"0xabc","chain":"eth","token":"USDC"},
+    "amount_cents":10000,"currency":"USDC",
+    "idempotency_key":"idem-001"
+  }
+}}
+```
+
+## 5. Refresh
+
+```
+POST https://auth.glide.co/oauth2/token
+grant_type=refresh_token&refresh_token=<refresh>&client_id=...&client_secret=...
+```
+
+Refreshing issues a new access token; the old grant's `jti` is superseded. Clients MUST track only the latest `jti` for revocation.
+
+## Revocation
+
+Tokens are revoked by the user at `app.glide.co/dashboard/agents/:id` or by the agent itself via `agent.grant.issue` (which supersedes the prior grant) / `killSwitch.all` (global revoke).
+
+Grant-wrapper fresh-reads the `revoked_at` column on every tool call — revocation is MCP-inert within 3s P99.

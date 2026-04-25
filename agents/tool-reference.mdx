@@ -1,0 +1,78 @@
+---
+title: "Tool reference"
+description: "Every MCP tool exposed by apps/mcp — read, write, treasury endpoints. Input schemas, output schemas, money-safety F-rule contract."
+icon: 'wrench'
+---
+
+
+All 22 tools at MCP v1 GA. Each handler lives in `apps/mcp/src/tools/<tool>.ts`.
+
+Format per tool: `name · scope · category · annotations`. Full input/output schemas in the source file.
+
+## Write tools (`/write` endpoint, 60 req/min cap)
+
+| Tool                | Scope               | Annotations                                                            |
+| ------------------- | ------------------- | ---------------------------------------------------------------------- |
+| `payments.initiate` | `payments:initiate` | destructive · idempotent · requires human approval (step-up threshold) |
+| `payments.simulate` | `payments:simulate` | read-only · idempotent (dry-run)                                       |
+| `cards.issue`       | `cards:manage`      | idempotent                                                             |
+| `cards.freeze`      | `cards:manage`      | idempotent (already_frozen is no-op)                                   |
+| `beneficiary.add`   | `beneficiary:write` | requires human approval (principal multisig-proposal gate)             |
+| `transfer.schedule` | `payments:initiate` | idempotent · policy re-eval at execute time                            |
+| `payroll.run`       | `payments:initiate` | destructive · requires human approval · V2-dep-flagged                 |
+| `x402.pay`          | `x402:pay`          | destructive · idempotent · F1 server-fetch tx verify                   |
+| `x402.receive`      | `x402:receive`      | read-only (endpoint metadata describe)                                 |
+
+## Read tools (`/read` endpoint, 300 req/min cap)
+
+| Tool                | Scope                                                      |
+| ------------------- | ---------------------------------------------------------- |
+| `accounts.list`     | `accounts:read`                                            |
+| `accounts.balance`  | `accounts:read`                                            |
+| `transactions.list` | `accounts:read`                                            |
+| `agents.list`       | `agents:read`                                              |
+| `skills.list`       | `agents:read`                                              |
+| `audit.stream`      | `audit:stream` (mints SSE cursor — `idempotentHint=false`) |
+
+## Treasury tools (`/treasury` endpoint, 10 req/min cap)
+
+| Tool                  | Scope                     | Notes                                                      |
+| --------------------- | ------------------------- | ---------------------------------------------------------- |
+| `agent.budget.create` | `agent:budget:create`     | saga with 4-step rollback; requires human approval         |
+| `agent.budget.revoke` | `agent:budget:revoke`     | destructive · auto-sweep on by default                     |
+| `agent.grant.issue`   | `agent:budget:create`     | step-up required; refuses scope escalation                 |
+| `vault.rotateSigner`  | `treasury:rotate-signer`  | step-up required; bumps policy_version                     |
+| `yield.allocate`      | `treasury:yield-allocate` | V3-dep-flagged; envelope step-up respected                 |
+| `killSwitch.all`      | `agent:budget:revoke`     | destructive · emergency · `confirm_scope` literal required |
+
+## Step-up flow (shared)
+
+Write/treasury tools over the envelope return JSON-RPC `-32003` with:
+
+```json
+{
+  "code": -32003,
+  "message": "amount 60000 requires step-up approval",
+  "data": {
+    "reason_id": "step_up_required",
+    "step_up_url": "https://app.glide.co/step-up/<sigil>"
+  }
+}
+```
+
+Surface the URL to the user. They biometric-approve on the Glide sheet. Retry the tool with `step_up_sigil=<sigil>`. CAS-claim guarantees first-use-only; a 5-minute grace window returns the same payload to benign polls (prevents re-asking on network retry).
+
+## Annotations honored by MCP clients
+
+Per MCP 2025-11-25 spec:
+
+- `readOnlyHint`: no side effects.
+- `destructiveHint`: cannot be undone by the tool itself.
+- `idempotentHint`: safe to retry with same params.
+- `openWorldHint`: interacts with external systems (x402.pay, facilitators).
+
+Glide extension:
+
+- `requiresHumanApproval`: client SHOULD surface the step-up flow to the user even before calling.
+
+Official Glide clients (Claude Desktop, ChatGPT Apps, Vertex) verify emitted annotations match the client-side registry; mismatch = refuse to execute. Custom runtimes that bypass this client-side check are still caught by the server-side annotation check on each call.
