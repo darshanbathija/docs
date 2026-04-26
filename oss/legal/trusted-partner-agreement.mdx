@@ -1,6 +1,6 @@
 ---
-title: "Trusted Partner Agreement (template)"
-description: "Template contract between Glide and a Verified-tier connector vendor. Score: 96.67/100."
+title: "Trusted Partner Agreement (template, use-based consent)"
+description: "Use-based consent contract between Glide and a Verified-tier connector vendor. No countersign required. Score: 96.67/100."
 icon: "handshake"
 ---
 
@@ -13,12 +13,14 @@ This page mirrors the canonical file. For execution, copy from the source repo t
 
 # Glide Trusted Partner Agreement
 
-**Status:** Template, ready for counsel review. Not yet reviewed by counsel.
-**Form:** v1.0
-**Last revised:** 2026-04-26
+**Status:** Use-based consent. No countersign required.
+**Form:** v1.1
+**Last revised:** 2026-04-27
 **Applies to:** Promotion of a connector from `community` tier to `verified` tier in the Glide Marketplace.
 
-> **Plain-language summary (not part of the contract).** This is the agreement that lets a vendor's connector wear the Glide "Verified" badge, appear on the Marketplace, and ship enabled-by-default in Glide. It does NOT change the open-source license on the connector code — that stays MIT, and anyone can still fork it. What this agreement covers is the badge, the Marketplace placement, and the obligations that come with them: code-quality SLA, incident response, audit cooperation, and mutual indemnification. It does not bind end users or operators of self-hosted Glide deployments — they have their own separate terms with the partner. Counsel should review before either party signs.
+> **Plain-language summary (not part of the contract).** This is the agreement that lets a vendor's connector wear the Glide "Verified" badge, appear on the Marketplace, and ship enabled-by-default in Glide. It does NOT change the open-source license on the connector code — that stays MIT, and anyone can still fork it. What this agreement covers is the badge, the Marketplace placement, and the obligations that come with them: code-quality SLA, incident response, audit cooperation, and mutual indemnification. It does not bind end users or operators of self-hosted Glide deployments — they have their own separate terms with the partner.
+>
+> **You don't sign anything.** By having a Connector promoted to Verified-Tier in the Glide Marketplace and continuing to maintain it, you (the Partner) accept these terms — same way you accept GitHub's TOS by pushing a commit. See §0 Acceptance below for the formal mechanic. If you'd rather have a wet-signed countersigned copy on file (some legal departments require it), Glide will provide one on request — but it's not required to be a Trusted Partner.
 >
 > **How this Agreement is structured.**
 >
@@ -37,12 +39,32 @@ This page mirrors the canonical file. For execution, copy from the source repo t
 
 ## Parties
 
-This Trusted Partner Agreement (this "**Agreement**") is entered into as of `[EFFECTIVE_DATE]` (the "**Effective Date**") by and between:
+This Trusted Partner Agreement (this "**Agreement**") governs the relationship between:
 
-- **Glide:** Axtior, Inc., a Delaware corporation with offices at `[GLIDE_ADDRESS]` ("**Glide**"); and
-- **Partner:** `[PARTNER LEGAL NAME]`, a `[PARTNER JURISDICTION]` `[PARTNER ENTITY TYPE]` with offices at `[PARTNER ADDRESS]` ("**Partner**").
+- **Glide:** Axtior, Inc., a Delaware corporation ("**Glide**"); and
+- **Partner:** the legal entity that owns or controls the Connector identified by `[CONNECTOR_SLUG]` and whose Connector is promoted to Verified Tier in the Marketplace ("**Partner**").
 
-Glide and Partner are each a "**Party**" and together the "**Parties**." This Agreement governs the promotion of the connector identified below from `community` tier to `verified` tier in the Glide ecosystem.
+Glide and Partner are each a "**Party**" and together the "**Parties**." This Agreement governs the promotion of the Connector identified below from `community` tier to `verified` tier in the Glide ecosystem.
+
+---
+
+## 0. Acceptance — How This Agreement Becomes Effective
+
+0.1. **No countersign required.** Glide intentionally distributes this Agreement as a use-based consent instrument rather than a wet-signed contract. Partner accepts this Agreement by performing **any one** of the following acts after this version of the Agreement (Form v1.1) is published at `glide.co/docs/oss/legal/trusted-partner-agreement`:
+
+   (a) requesting promotion of the Connector from `community` to `verified` Trust Tier (whether by GitHub PR, email, or in-product flow);
+   (b) maintaining the Connector at Verified Trust Tier for any continuous period of 30 days after this Form's publication; or
+   (c) using the Verified Mark in any public-facing materials (website, README, marketplace listing, conference signage, or otherwise).
+
+0.2. **Effective Date.** This Agreement becomes effective with respect to Partner on the earliest date Partner performs an act described in §0.1 (the "**Effective Date**"). Where this Agreement refers to "the Effective Date" or "as of the Effective Date," that reference is to this date.
+
+0.3. **Authority.** The natural person taking the act described in §0.1 represents that they have authority to bind Partner. Partner agrees that Glide may rely on that representation without further inquiry.
+
+0.4. **Form bumps.** Glide may publish a new Form of this Agreement at any time at the URL above. A Form bump that increases Partner's obligations becomes effective for an existing Verified Connector only when Partner first performs an act described in §0.1 with respect to the new Form (typically the next Major Release of the Connector or 60 days after publication, whichever is earlier). Until then, the prior Form continues to govern.
+
+0.5. **Optional countersigned counterpart.** If Partner's counsel requires a wet-signed counterpart, Partner may request one from `legal@glide.co` and Glide will provide a counterpart on Glide letterhead, signed by an authorized officer of Glide, with a Partner signature block for Partner's countersign. The countersigned counterpart is a *record* of acceptance, not a *condition* of acceptance — the use-based mechanic in §0.1 is the operative one.
+
+0.6. **Withdrawal.** Partner may withdraw acceptance prospectively at any time by either (i) requesting demotion of the Connector to `community` Trust Tier, or (ii) ceasing all use of the Verified Mark and notifying Glide at `legal@glide.co`. Withdrawal does not relieve Partner of obligations that accrued during the term, including any indemnity, confidentiality, or accrued-fees obligations that survive under §11.6.
 
 ---
 
@@ -86,7 +108,7 @@ Capitalized terms have the meanings given below. Defined terms are also referenc
 
 1.18. "**Incident**" has the meaning given in Section 7.
 
-1.19. "**Effective Date**" has the meaning given in the Parties block above.
+1.19. "**Effective Date**" has the meaning given in §0.2.
 
 1.20. "**MIT License**" means the version of the MIT License under which the Glide Software is distributed, a copy of which is available in the `LICENSE` file at the root of the Glide Software repository.
 
@@ -371,39 +393,36 @@ THIS CAP APPLIES SYMMETRICALLY TO BOTH PARTIES — GLIDE'S LIABILITY TO PARTNER 
 
 ---
 
-## Signatures
+## Acceptance Record
 
-**Glide — Axtior, Inc.**
+This Agreement is **not signed**. It becomes effective as described in §0 (Acceptance). The operative record of Partner's acceptance is one or more of:
 
-Name: `[GLIDE SIGNATORY NAME]`
-Title: `[GLIDE SIGNATORY TITLE]`
-Date: `[GLIDE SIGNATURE DATE]`
-Signature: ************\_\_\_\_************
+- the GitHub PR or email request promoting the Connector to Verified Trust Tier;
+- the audit-log entry recording promotion in the Glide manifest tree;
+- the date Partner first uses the Verified Mark in public-facing materials;
+- (optional) a wet-signed counterpart provided under §0.5.
 
-**Partner — `[PARTNER LEGAL NAME]`**
-
-Name: `[PARTNER SIGNATORY NAME]`
-Title: `[PARTNER SIGNATORY TITLE]`
-Date: `[PARTNER SIGNATURE DATE]`
-Signature: ************\_\_\_\_************
+Glide retains the operative record. Partner may request a copy at `legal@glide.co`.
 
 ---
 
 ## Schedule A — Connector Reference
 
-| Field                                  | Value                                                         |
-| -------------------------------------- | ------------------------------------------------------------- |
-| Connector Slug                         | `[CONNECTOR_SLUG]`                                            |
-| Connector Path                         | `packages/connectors/[CONNECTOR_SLUG]/`                       |
-| Major Release / Version Range          | `[CONNECTOR_VERSION_RANGE]`                                   |
-| Declared egress hosts                  | `[EGRESS_HOSTS]`                                              |
-| Declared regions                       | `[REGIONS]`                                                   |
-| Declared currencies                    | `[CURRENCIES]`                                                |
-| Partner technical contact              | `[PARTNER_TECH_CONTACT_NAME]`, `[PARTNER_TECH_CONTACT_EMAIL]` |
-| Partner security contact               | `[PARTNER_SEC_CONTACT_NAME]`, `[PARTNER_SEC_CONTACT_EMAIL]`   |
-| Partner legal/notice contact           | `[PARTNER_LEGAL_CONTACT_NAME]`, `[PARTNER_NOTICE_EMAIL]`      |
-| Glide review checklist completion date | `[GLIDE_CHECKLIST_DATE]`                                      |
-| Glide reviewers (2 required)           | `[GLIDE_REVIEWER_1]`, `[GLIDE_REVIEWER_2]`                    |
+This Schedule is filled in by Glide when the Connector is promoted to Verified Tier. Partner does not sign Schedule A — the values are sourced from the Connector's manifest at promotion time.
+
+| Field                                  | Source                                                                  |
+| -------------------------------------- | ----------------------------------------------------------------------- |
+| Connector Slug                         | `manifest.slug`                                                         |
+| Connector Path                         | `packages/connectors/<slug>/`                                           |
+| Major Release / Version Range          | `manifest.packageVersion` at time of promotion                          |
+| Declared egress hosts                  | `manifest.egressHosts`                                                  |
+| Declared regions                       | `manifest.regions`                                                      |
+| Declared currencies                    | `manifest.currencies`                                                   |
+| Partner technical contact              | Partner's email-of-record on the promotion request                      |
+| Partner security contact               | `SECURITY.md` in Partner's repository, or email-of-record               |
+| Partner legal/notice contact           | Partner's email-of-record (Partner may supply a different legal contact via `legal@glide.co`) |
+| Glide review checklist completion date | Audit log on the promotion PR                                           |
+| Glide reviewers (2 required)           | CODEOWNERS reviewers on the promotion PR                                |
 
 ## Schedule B — Side-Letter Slot (Commercial Extensions, if any)
 

@@ -1,6 +1,6 @@
 ---
-title: "Trusted Skill Agreement (template)"
-description: "Template contract between Glide and a Verified-tier skill author. Score: 100.00/100."
+title: "Trusted Skill Agreement (template, use-based consent)"
+description: "Use-based consent contract between Glide and a Verified-tier skill author. No countersign required. Score: 100.00/100."
 icon: "hat-wizard"
 ---
 
@@ -13,12 +13,14 @@ This page mirrors the canonical file. For execution, copy from the source repo t
 
 # Trusted Skill Agreement (TSA)
 
-**Status:** Template — ready for counsel review. Do not execute without counsel sign-off.
+**Status:** Use-based consent. No countersign required.
+**Form:** v1.1
+**Last revised:** 2026-04-27
 
-This Trusted Skill Agreement ("**Agreement**") is entered into as of `[EFFECTIVE_DATE]` (the "**Effective Date**") by and between:
+This Trusted Skill Agreement ("**Agreement**") governs the relationship between:
 
 - **Axtior, Inc.**, a Delaware corporation doing business as **Glide** ("**Glide**"), and
-- **`[SKILL_AUTHOR_LEGAL_NAME]`** ("**Skill Author**") with respect to the agent skill identified by the slug `[SKILL_ID]` (the "**Skill**").
+- The legal entity or natural person who owns or controls the agent skill identified by the slug `[SKILL_ID]` (the "**Skill**") and whose Skill is promoted to Verified trust tier in the Glide Marketplace ("**Skill Author**").
 
 Glide and Skill Author are each a "**Party**" and collectively the "**Parties**." This Agreement governs the promotion of the Skill to the **Verified** trust tier in the Glide Marketplace and the prompt-injection / scope-minimization commitments that promotion entails. It does **not** govern the Skill's underlying source code, which remains licensed under MIT (see §3).
 
@@ -26,7 +28,7 @@ The TSA is intentionally **lighter** than Glide's Trusted Partner Agreement (TPA
 
 ### How this differs from the TPA (one-page summary)
 
-A skill author should expect to read this in a single sitting and sign within a day with their counsel. Compared to the connector-side TPA, the TSA:
+A skill author should expect to read this in a single sitting. **No wet signature is required** — see §0 below for the use-based acceptance mechanic. Compared to the connector-side TPA, the TSA:
 
 - has **no MSB / money-transmitter / KYC / OFAC** operational obligation on Skill Author (those live with Glide + connectors);
 - has a **lower liability cap** (USD $1,000 floor vs. the connector cap which is denominated against transaction volume);
@@ -34,6 +36,26 @@ A skill author should expect to read this in a single sitting and sign within a 
 - requires **prompt-injection review** at every major release, which the connector TPA does not require;
 - carries the **same** Delaware governing law / JAMS SF arbitration / class-action waiver structure;
 - preserves the Skill's **MIT license unconditionally** — Skill Author can always fork.
+
+---
+
+## 0. Acceptance — How This Agreement Becomes Effective
+
+0.1 **No countersign required.** Glide distributes this Agreement as a use-based consent instrument rather than a wet-signed contract. Skill Author accepts this Agreement by performing **any one** of the following acts after this Form (v1.1) is published at `glide.co/docs/oss/legal/trusted-skill-agreement`:
+
+   (a) requesting promotion of the Skill from `community` to `verified` Trust Tier (whether by GitHub PR, email, or in-product flow);
+   (b) maintaining the Skill at Verified Trust Tier for any continuous period of 30 days after this Form's publication; or
+   (c) using the Glide "Verified Skill" mark in any public-facing materials (website, README, marketplace listing, conference signage, or otherwise).
+
+0.2 **Effective Date.** This Agreement becomes effective with respect to Skill Author on the earliest date Skill Author performs an act described in §0.1 (the "**Effective Date**").
+
+0.3 **Authority.** The natural person taking the act described in §0.1 represents that they have authority to bind Skill Author. Glide may rely on that representation without further inquiry.
+
+0.4 **Form bumps.** Glide may publish a new Form of this Agreement at any time. A Form bump that increases Skill Author's obligations becomes effective for an existing Verified Skill only when Skill Author first performs an act described in §0.1 with respect to the new Form (typically the next Major Release of the Skill or 60 days after publication, whichever is earlier). Until then, the prior Form continues to govern.
+
+0.5 **Optional countersigned counterpart.** If Skill Author's counsel requires a wet-signed counterpart, Skill Author may request one from `legal@glide.co` and Glide will provide a counterpart on Glide letterhead, signed by an authorized officer of Glide. The countersigned counterpart is a *record* of acceptance, not a *condition* of acceptance — the use-based mechanic in §0.1 is the operative one.
+
+0.6 **Withdrawal.** Skill Author may withdraw acceptance prospectively at any time by either (i) requesting demotion of the Skill to `community` Trust Tier, or (ii) ceasing all use of the Verified mark and notifying Glide at `legal@glide.co`. Withdrawal does not relieve Skill Author of obligations that accrued during the term, including any indemnity, confidentiality, or accrued-fees obligations that survive under §8.
 
 ---
 
@@ -45,7 +67,7 @@ A skill author should expect to read this in a single sitting and sign within a 
 
 1.3 "**Skill**" means the specific agent automation identified by the slug `[SKILL_ID]`, including its `manifest.ts`, consent-flow UI, policy-envelope template, tool-manifest scope list, and supporting code, residing at `packages/skills/[SKILL_ID]/` in the `glide-oss` repository (or a designated downstream fork). The term excludes any user-supplied data or runtime traffic.
 
-1.4 "**Verified Tier**" means the middle Glide skill trust tier defined in `packages/skills/_base/src/manifest.ts` as `SkillTrustTier.verified`. A Verified Skill (a) ships enabled by default in the Marketplace catalog (subject to per-tenant opt-in), (b) carries the lavender "Verified" badge, and (c) requires a signed, current TSA on file.
+1.4 "**Verified Tier**" means the middle Glide skill trust tier defined in `packages/skills/_base/src/manifest.ts` as `SkillTrustTier.verified`. A Verified Skill (a) ships enabled by default in the Marketplace catalog (subject to per-tenant opt-in), (b) carries the lavender "Verified" badge, and (c) is bound by a current TSA Form per §0 (no wet-signed counterpart required).
 
 1.5 "**Marketplace**" means the public catalog hosted at `https://glide.co/skills` (canonical) and any embedded Glide-controlled distribution surface, including the in-product Skill Catalog at `apps/web/src/app/(public)/skills/`, mirrored partner-pack listings (e.g., Anthropic Connector Registry, Google Vertex Agent Tools, ChatGPT Apps Directory, OpenClaw Registry, Hermes Registry), and Glide Cloud catalog APIs.
 
@@ -281,32 +303,27 @@ Glide may extend the seven-day window in writing where the underlying defect is 
 
 14.8 **Independent contractors.** The Parties are independent contractors. Nothing creates a partnership, joint venture, agency, or employment relationship.
 
-14.9 **Counterparts; electronic signature.** This Agreement may be executed in counterparts, including via electronic signature, each of which is an original.
+14.9 **Counterparts.** No counterparts are required because this Agreement is not signed; see §0. Where Skill Author has elected the optional countersigned counterpart under §0.5, that counterpart may be executed in counterparts, including via electronic signature, each of which is an original.
 
 ---
 
-## Signature Page
+## Acceptance Record
 
-**Axtior, Inc. (Glide)**
+This Agreement is **not signed**. It becomes effective as described in §0 (Acceptance). The operative record of Skill Author's acceptance is one or more of:
 
-Name: ************\_\_\_************
-Title: ************\_\_\_\_************
-Date: ************\_\_\_\_************
-Legal-notice email: legal@glide.co
-Security contact: security@glide.co
+- the GitHub PR or email request promoting the Skill to Verified Trust Tier;
+- the audit-log entry recording promotion in the Glide manifest tree;
+- the date Skill Author first uses the "Glide Verified Skill" mark in public-facing materials;
+- (optional) a wet-signed counterpart provided under §0.5.
 
-**Skill Author — `[SKILL_AUTHOR_LEGAL_NAME]`**
+Glide retains the operative record. Skill Author may request a copy at `legal@glide.co`.
 
-Name: ************\_\_\_************
-Title: ************\_\_\_\_************
-Date: ************\_\_\_\_************
-Legal-notice email: ************\_\_\_************
-Security contact: ************\_\_\_************
+For reference, the canonical contacts at Glide:
 
-Skill slug: `[SKILL_ID]`
-Effective Date: `[EFFECTIVE_DATE]`
+- Legal-notice email: `legal@glide.co`
+- Security contact: `security@glide.co`
 
 ---
 
-_Document status: TEMPLATE. Counsel review pending. Do not execute without sign-off from Axtior counsel._
+_Document status: TEMPLATE. Use-based consent — Form v1.1, last revised 2026-04-27._
 
