@@ -1,0 +1,104 @@
+---
+title: "Adding a connector"
+description: "Partner-PR flow for adding a new vendor adapter at packages/connectors/<slug>/. Trust tiers, 8-gate CI matrix, scaffolding, contract tests."
+icon: 'plus'
+---
+
+Extending Glide with a new vendor connector is a five-step partner-PR flow. The full source of truth is [`CONTRIBUTING.md`](https://github.com/darshanbathija/axtior-neobank/blob/main/CONTRIBUTING.md); this page summarizes the connector-specific path.
+
+## Trust tiers
+
+| Tier | When |
+| --- | --- |
+| `community` | Any first PR. Off by default; requires `GLIDE_ALLOW_COMMUNITY_CONNECTORS=true` + a red admin banner. Open contribution; no signed agreement required. |
+| `verified` | Reviewed against the Verified-tier checklist + signed Trusted Partner Agreement. Ships enabled with per-tenant opt-in. Tier promotion is a separate PR. |
+| `core` | Glide-maintained reference implementations. Tier promotion requires CODEOWNERS approval. |
+
+## Five-step flow
+
+<Steps>
+  <Step title="Open a `New connector` issue first">
+    Use the [`new-connector` issue template](https://github.com/darshanbathija/axtior-neobank/issues/new?template=new-connector.yml) so we can flag any compliance / regulatory concerns before you write code. Include vendor name, slug, capabilities, regions, regulatory posture, and rationale.
+  </Step>
+  <Step title="Read the `_base/` interfaces">
+    Capability contracts live at `packages/connectors/_base/src/capabilities/`. Pick the subset your vendor implements:
+
+    - `orchestration` — fiat ↔ crypto conversion.
+    - `kyc` — identity verification.
+    - `card` — card issuance.
+    - `screening` — sanctions / AML lookup.
+    - `chain-receipt` — on-chain confirmation reads.
+    - `balance` — multi-chain balance reads.
+    - `auth` — token verification.
+    - `banking` — direct bank-rail (ACH / wire / SWIFT).
+    - `qr-gateway` — QR-code merchant payments.
+    - And 5 more (oauth-authorization-server, attestation, merkle-anchor, timelock-module, recovery).
+  </Step>
+  <Step title="Scaffold the package">
+    ```
+    packages/connectors/<slug>/
+    ├── package.json
+    ├── tsconfig.json
+    ├── eslint.config.mjs
+    ├── icon.svg
+    ├── README.md
+    ├── COMPLIANCE.md
+    ├── DISCLAIMER.md (required if vendor ToS is unclear on adapter redistribution)
+    ├── src/
+    │   ├── manifest.ts        // ConnectorManifest (Zod-validated)
+    │   ├── credentials.ts     // Zod schema for env keys
+    │   ├── legacy.ts          // adapter implementation
+    │   └── __tests__/
+    │       └── contract.test.ts
+    ```
+
+    Or use the CLI:
+
+    ```bash
+    glide partner submit ./my-connector --type=connector
+    ```
+  </Step>
+  <Step title="Write the contract test">
+    Extend `ContractTestSuite` from `@repo/connectors-base`:
+
+    ```ts
+    import { ContractTestSuite } from '@repo/connectors-base';
+    import { manifest } from '../manifest';
+    import { MyVendorAdapter } from '../legacy';
+
+    class MyVendorSuite extends ContractTestSuite {
+      readonly manifest = manifest;
+      readonly runtime = {
+        orchestration: new MyVendorAdapter(),
+      };
+    }
+    ```
+
+    The test asserts manifest validity + capability presence + egress-host invariant (every host the connector touches must appear in `manifest.egressHosts`).
+  </Step>
+  <Step title="Submit the PR">
+    All eight CI gates must pass:
+
+    1. DCO sign-off check.
+    2. Signed-commits check (Verified tier and above).
+    3. Manifest schema validation.
+    4. Contract-test runner.
+    5. License-compat scan (M5.5+).
+    6. Supply-chain scans (Snyk + Socket — M5.5+).
+    7. Egress-host lint via `ts-morph` (M5.5+).
+    8. Compliance review (counsel sign-off for verified-tier promotions).
+
+    See [License compatibility](/oss/security/license-compatibility) for the matrix.
+  </Step>
+</Steps>
+
+## Review SLA
+
+- Community-tier: 5 business days.
+- Verified-tier promotion: 10 business days (includes Trusted Partner Agreement review).
+
+## Reading list
+
+- [Connector catalog](/oss/connectors/index) — every connector currently in the repo.
+- [License compatibility](/oss/security/license-compatibility) — accept / warn / block matrix.
+- [Threat model](/oss/security/threat-model) — T7 (malicious connector PR).

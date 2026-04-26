@@ -1,0 +1,101 @@
+---
+title: "Agent platform quickstart"
+description: "Spin up apps/mcp locally + connect Claude Desktop / ChatGPT / Vertex / OpenClaw / Hermes. The 30-minute path to a working agent banking environment."
+icon: 'rocket'
+---
+
+This is the agent-platform-specific quickstart. For the broader Glide bring-up (web app + data layer), see the [main quickstart](/oss/quickstart).
+
+## Prerequisites
+
+- Glide running locally per the [main quickstart](/oss/quickstart) (Postgres on `localhost:5435`, Redis on `localhost:6381`, Inngest dev on `localhost:8288`, web on `localhost:3000`).
+- Privy Multi-tenant tenant with `NEXT_PUBLIC_PRIVY_APP_ID` + `PRIVY_APP_SECRET` set.
+- Node 22+, pnpm.
+
+## Boot `apps/mcp`
+
+```bash
+# In the axtior-neobank repo
+pnpm --filter mcp dev
+```
+
+This boots the MCP gateway on `localhost:8787` with HMAC-SHA256 dev verifier. The dev secret is read from `MCP_TOKEN_VERIFIER_DEV_SECRET` in your `.env.local`.
+
+Set a 32-byte hex secret if you haven't already:
+
+```bash
+echo "MCP_TOKEN_VERIFIER_DEV_SECRET=$(openssl rand -hex 32)" >> apps/web/.env.local
+```
+
+## Sanity-check the gateway
+
+<CodeGroup>
+```bash Public manifest (no auth)
+curl http://localhost:8787/mcp/manifest
+```
+
+```bash Tool catalog discovery (no auth, MCP spec)
+curl -X POST http://localhost:8787/mcp/read \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+```bash Health probes
+curl http://localhost:8787/healthz
+curl http://localhost:8787/readyz
+```
+</CodeGroup>
+
+## Connect an agent runtime
+
+The MCP gateway speaks MCP spec 2025-11-25. Any MCP-compliant runtime works. Glide ships partner pack drafts for the five hero runtimes — see [Partner registries](/oss/headless/partner-registries).
+
+### Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "glide-local": {
+      "url": "http://localhost:8787/mcp/read",
+      "headers": {
+        "Authorization": "Bearer <hmac-signed-jwt>"
+      }
+    }
+  }
+}
+```
+
+For local dev, generate an HMAC-signed JWT against your dev secret. For production, you'd issue this through your Ory Hydra deployment per the [OAuth flow](/oss/headless/oauth-flow).
+
+### ChatGPT Apps
+
+Submit through the [Partner registry submission flow](/oss/headless/partner-registries) once you've stood up `auth.<your-domain>` + verified `mcp.<your-domain>`.
+
+### Google Vertex / OpenClaw / Hermes
+
+Same submission flow. Each pack has a `connector-manifest.json` template at `docs/designs/agent-distribution-partner-packs/<runtime>/`.
+
+## Three confused-deputy-isolated endpoints
+
+| Endpoint | Tools | Trust scope |
+| --- | --- | --- |
+| `/mcp/read` | accounts, balances, transactions, agents, skills, audit stream | Read-only — no money movement |
+| `/mcp/write` | payments, cards, transfers, beneficiaries, x402 pay/receive, yield allocate | Money-touching; envelope-bound |
+| `/mcp/treasury` | grant issuance, signer rotation, kill-switch | Admin-only; principal explicit |
+
+**Confused-deputy guard:** a `read` token cannot call `write` or `treasury` tools. The check fires BEFORE auth so a sniffed token from one endpoint can't probe the others.
+
+## Step-up via URL-mode elicitation
+
+Tools that cross the policy envelope return JSON-RPC `-32003` with a `step_up_url`. The client surfaces that URL; the principal biometric-approves on the Glide web sheet at `localhost:3000/step-up/[sigil]`; the client retries the tool call with the returned `step_up_sigil`.
+
+Sigils are CAS-claimed first-use-only (F7 IRON RULE).
+
+## Where to next
+
+- [OAuth flow](/oss/headless/oauth-flow) — full RFC 7591 + 8707 + PKCE walk-through for production.
+- [Tool reference](/oss/headless/tool-reference) — every tool's input + output schema.
+- [Self-hosting the agent platform](/oss/headless/self-hosting) — Ory Hydra deploy + production posture.
+- [Money-safety contracts](/oss/concepts/money-safety-contracts) — the F-rules every tool path observes.

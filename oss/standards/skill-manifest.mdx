@@ -1,0 +1,118 @@
+---
+title: "SkillManifest (draft)"
+description: "Schema for agent skill packages at packages/skills/<id>/. Defines runtime compat, required scopes, policy template, consent summary, trust tier."
+icon: 'robot'
+---
+
+The OSS agent-skill manifest. Every package at `packages/skills/<id>/` ships one of these as `src/manifest.ts`.
+
+## Canonical URL
+
+[`https://glide.co/schemas/agent-banking/draft/skill-manifest.json`](https://glide.co/schemas/agent-banking/draft/skill-manifest.json)
+
+## Required fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schemaVersion` | `'v1'` | Locked. |
+| `slug` | `string` (lowercase kebab-case) | Package directory name. |
+| `displayName` | `string` | Catalog display name. |
+| `tagline` | `string` | One-sentence pitch. |
+| `longDescription` | `string` | Multi-paragraph description rendered in the install consent flow. |
+| `category` | `'ap' \| 'treasury' \| 'consumer' \| 'payroll' \| 'x402'` | Catalog filter. |
+| `runtimeCompat` | `Runtime[]` | `claude-desktop` / `chatgpt-apps` / `vertex` / `openclaw` / `hermes`. |
+| `requiredScopes` | `Scope[]` | Closed-vocab MCP scopes the skill calls. |
+| `policyTemplate` | `SkillPolicyTemplate` | Per-skill envelope defaults. Strict subset of `AgentPolicyEnvelope`. |
+| `consentSummary` | `string` | Plain-English copy surfaced at install. **Must mention payments / money / cards / `$` / usd if `requiredScopes` includes a money-touching scope.** |
+| `trust` | `'community' \| 'verified' \| 'core'` | Trust tier. |
+| `publisher` | `string` | Maintainer org or individual. |
+| `iconPath` | `string` (defaults `./icon.svg`) | Relative path. |
+| `packageVersion` | `string` | Semver. |
+| `blockingDependency` | `string \| null` | Free-text label. `null` = unblocked. Non-null = catalog renders "wait for V3" instead of "install now". |
+| `homepageUrl` | `string` (URL, optional) | |
+| `changelogUrl` | `string` (URL, optional) | |
+
+## Closed vocabularies
+
+Adding to any of these requires `@glide/policy-engine` to understand the same vocabulary — CODEOWNERS-protected change.
+
+### `SkillScope`
+
+```
+accounts:read
+agents:read
+audit:stream
+beneficiary:write
+cards:manage
+payments:initiate
+payments:simulate
+treasury:yield-allocate
+x402:pay
+x402:receive
+```
+
+### `SkillRuntime`
+
+```
+claude-desktop
+chatgpt-apps
+vertex
+openclaw
+hermes
+```
+
+### `SkillCategory`
+
+```
+ap
+treasury
+consumer
+payroll
+x402
+```
+
+## Consent under-disclosure guard
+
+The `SkillContractTestSuite` enforces a soft guard: if `requiredScopes` includes any of `payments:initiate`, `cards:manage`, or `x402:pay`, the `consentSummary` MUST mention payments / money / cards / `$` / usd. Soft guard against community-tier skills that under-disclose at the install consent step.
+
+The contract test catches the obvious cases. Reviewers catch subtler ones during the verified-tier promotion review (e.g. consent copy that mentions money but lies about caps).
+
+## Example
+
+```ts
+import { SkillManifest } from '@glide/skills-base';
+
+export const manifest = SkillManifest.parse({
+  schemaVersion: 'v1',
+  slug: 'ap-agent-claude-quickbooks',
+  displayName: 'AP Agent (Claude + QuickBooks)',
+  tagline: 'Let Claude draft vendor payments from QBO invoices.',
+  longDescription: '...',
+  category: 'ap',
+  runtimeCompat: ['claude-desktop'],
+  requiredScopes: [
+    'accounts:read',
+    'payments:initiate',
+    'payments:simulate',
+    'beneficiary:write',
+    'audit:stream',
+  ],
+  policyTemplate: {
+    perTxMaxUsdCents: 250_000,
+    dailyCapUsdCents: 1_000_000,
+    counterpartyAllowlist: [],
+    velocityCap: { windowMinutes: 60, maxCount: 20 },
+  },
+  consentSummary: 'Claude reads your QuickBooks Online invoices and drafts USD payments to your existing vendors, capped at $2,500 per transaction and $10,000 per day. Each payment requires your explicit approval before broadcast.',
+  trust: 'core',
+  publisher: 'Glide',
+  packageVersion: '0.1.0',
+  blockingDependency: 'V3 Bucket 3.3 (QBO integration) + 3.4 (bill pay)',
+});
+```
+
+## Reading list
+
+- [Authoring a skill](/oss/skills/authoring) — partner-PR flow.
+- [AgentPolicyEnvelope](/oss/standards/agent-policy-envelope) — the full envelope a skill template constrains.
+- [Skill catalog](/oss/skills/index) — every skill currently in the repo.

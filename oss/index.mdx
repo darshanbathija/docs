@@ -1,0 +1,90 @@
+---
+title: "Glide OSS"
+description: "MIT-licensed orchestration shell for stablecoin neobank rails + agent banking. Self-host the code; bring your own vendors; contribute connectors and skills."
+icon: "github"
+---
+
+Glide OSS is the open-source orchestration shell behind [glide.co](https://glide.co) — a MIT-licensed full-stack codebase covering the web app, mobile app, MCP gateway, agent skills library, and trust console. Self-hosters bring their own vendor relationships (Privy, Bridge, Chainalysis, Coinbase x402, etc.); the code orchestrates them.
+
+This is **not** a fully self-hostable bank stack. It is a self-hostable orchestration shell with explicit vendor dependencies. The honest framing matters because calling OSS a "money OS" without the vendor-dependency layer creates trust debt.
+
+## What you can do with Glide OSS
+
+<CardGroup cols={2}>
+  <Card title="Self-host" icon="server" href="/oss/self-hosting">
+    Run your own Glide instance. Bring your own Privy tenant, Bridge contract, optional Chainalysis. <code>npx create-glide-app</code> to localhost in 90s.
+  </Card>
+  <Card title="Contribute a connector" icon="plug" href="/oss/connectors/extending">
+    Add a vendor adapter to the catalog. Manifest + capability impls + contract tests + 8-gate CI.
+  </Card>
+  <Card title="Author an agent skill" icon="robot" href="/oss/skills/authoring">
+    Package an MCP-callable agent capability. Manifest + policy template + consent flow + Trusted Skill Agreement at verified tier.
+  </Card>
+  <Card title="Cite the standards" icon="book" href="/oss/standards/index">
+    Public draft schemas for connector manifests, agent policy envelopes, scoped grant claims, receipts, skill manifests, trust tiers.
+  </Card>
+</CardGroup>
+
+## Architecture at a glance
+
+<CardGroup cols={2}>
+  <Card title="Orchestration shell" icon="layer-group" href="/oss/concepts/orchestration-shell">
+    What's actually OSS vs what's a vendor dependency.
+  </Card>
+  <Card title="Hosted vs self-hosted" icon="scale-balanced" href="/oss/concepts/hosted-vs-self-hosted">
+    100% code parity target with explicit exceptions table.
+  </Card>
+  <Card title="Money-safety contracts" icon="shield-halved" href="/oss/concepts/money-safety-contracts">
+    F1–F7 architectural commitments enforced at every money-touching path.
+  </Card>
+  <Card title="Headless MCP" icon="terminal" href="/oss/headless/index">
+    The agent gateway: <code>apps/mcp</code> with 21 tools, OAuth 2.1, policy engine, append-only audit log.
+  </Card>
+</CardGroup>
+
+## License + governance
+
+- **MIT everywhere.** Web, mobile, MCP, every connector, every skill, the CLI. No copyleft anywhere in-tree.
+- **DCO sign-off** on every commit (one-line Signed-off-by trailer, `git commit --signoff`).
+- **BDFL at launch.** Single maintainer. Governance formalizes when community volume requires it.
+- **CODEOWNERS-protected** changes for `_base/` interfaces, trust tier promotions, and money-safety architecture.
+
+See [License compatibility](/oss/security/license-compatibility) for the dependency-license matrix.
+
+## Trust tiers (quality, not licensing)
+
+| Tier         | When                                            | Off by default? |
+| ------------ | ----------------------------------------------- | --------------- |
+| `community`  | Any first PR                                    | Yes — opt-in via env + red banner |
+| `verified`   | Signed Trusted Partner / Skill Agreement + checklist review | No — per-tenant opt-in |
+| `core`       | Glide-maintained reference implementations      | No — ships enabled |
+
+Trust is **about code-review discipline**, not commercial gating. Every package ships under MIT regardless of tier. See [Trust tier](/oss/standards/trust-tier).
+
+## Money-safety F-rules
+
+Every money-touching tool path observes seven IRON-RULE contracts:
+
+| Rule | What it enforces |
+| ---- | ---------------- |
+| **F1** | Server-side RPC verify of on-chain settlement. Persisted hash from RPC, never from facilitator receipt. |
+| **F2** | CAS-claim before broadcast. Inngest re-fires never double-broadcast. |
+| **F3** | Fresh-read tenant verification on every tool invocation. Cached grant alone never authorizes. |
+| **F4** | Append-only audit log via Postgres trigger. UPDATE/DELETE rejected unless DSAR session var set. |
+| **F5** | Atomic policy_version bump on signer rotation. No in-flight tool call signs against rotated-out signer. |
+| **F7** | Sigil first-use-only for URL-mode step-up. CAS-claimed; race losers reject. |
+
+(F6 reserved.) Detail at [Money-safety contracts](/oss/concepts/money-safety-contracts).
+
+## Where to start
+
+- **Self-hoster** → [Quickstart](/oss/quickstart) → [Self-hosting](/oss/self-hosting)
+- **Connector author** → [Connector catalog](/oss/connectors/index) → [Adding a connector](/oss/connectors/extending)
+- **Skill author** → [Skill catalog](/oss/skills/index) → [Authoring a skill](/oss/skills/authoring)
+- **Agent integrator** → [Headless MCP](/oss/headless/index) → [OAuth flow](/oss/headless/oauth-flow) → [Tool reference](/oss/headless/tool-reference)
+- **Standards reader** → [Standards](/oss/standards/index)
+- **Security reviewer** → [Threat model](/oss/security/threat-model) → [License compatibility](/oss/security/license-compatibility)
+
+## Source code
+
+[github.com/darshanbathija/axtior-neobank](https://github.com/darshanbathija/axtior-neobank) — the monorepo. Issues, PRs, discussions all there. CONTRIBUTING.md has the full partner-PR flow.

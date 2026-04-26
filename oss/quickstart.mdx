@@ -1,0 +1,85 @@
+---
+title: "90-second quickstart"
+sidebarTitle: "Quickstart"
+description: "From `git clone` to `localhost:3000/health → 200` in under 90 seconds. Zero vendor signups required."
+icon: 'rocket'
+---
+
+The Champion-tier quickstart from the OSS Cathedral M3 plan. From a fresh machine with Docker + Node 22 + pnpm installed:
+
+<Steps>
+  <Step title="Clone + install">
+    ```bash
+    git clone https://github.com/darshanbathija/axtior-neobank.git
+    cd axtior-neobank
+    pnpm install
+    ```
+  </Step>
+  <Step title="Boot the data layer">
+    ```bash
+    docker compose up -d
+    ```
+
+    Brings up Postgres 16 on `localhost:5435`, Redis 7 on `localhost:6381`, Inngest dev on `localhost:8288`.
+  </Step>
+  <Step title="Generate dev-only keys">
+    ```bash
+    bash scripts/generate-keys.sh > .env.keys
+    cat .env.keys >> apps/web/.env.local
+    ```
+
+    <Warning>
+      `scripts/generate-keys.sh` emits **dev-only random placeholders** for the JWT secret, webhook secret, and four operational keys. Regenerate with KMS-backed values for production.
+    </Warning>
+  </Step>
+  <Step title="Add Privy creds (the one required vendor)">
+    Sign up at [privy.io](https://privy.io), create a Multi-tenant tenant, copy the App ID + App Secret into `apps/web/.env.local`:
+
+    ```env
+    NEXT_PUBLIC_PRIVY_APP_ID=clxxxxxxxxxxxxxx
+    PRIVY_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
+    ```
+  </Step>
+  <Step title="Apply migrations">
+    ```bash
+    bash scripts/run-agent-platform-migrations.sh
+    ```
+  </Step>
+  <Step title="Boot in demo mode">
+    ```bash
+    GLIDE_USE_MOCK_CONNECTORS=true pnpm --filter web dev
+    ```
+  </Step>
+  <Step title="Verify">
+    ```bash
+    curl http://localhost:3000/health
+    # → {"status":"ok"}
+
+    pnpm glide doctor
+    # all checks pass
+    ```
+  </Step>
+</Steps>
+
+## Alternative: `npx create-glide-app`
+
+```bash
+npx create-glide-app my-bank
+cd my-bank
+docker compose up -d
+# follow my-bank/README.md for the rest
+```
+
+The scaffolder writes a minimal starter (`docker-compose.yml`, `.env.example`, README) that orchestrates the data layer + directs you to `pnpm glide demo` for full bring-up.
+
+## What's mocked in demo mode
+
+`GLIDE_USE_MOCK_CONNECTORS=true` swaps every connector for its sandbox variant. **No real Bridge / Noah / Chainalysis / Alchemy keys required.** The fail-closed audit refuses production `NODE_ENV` unless `GLIDE_ALLOW_MOCKS_IN_PROD=true` is explicitly set.
+
+For a production-shaped stack with real vendors, see [Self-host guide](/oss/self-hosting).
+
+## Next
+
+- [Self-host guide](/oss/self-hosting) — production env posture + deploy targets.
+- [Hosted vs self-hosted](/oss/concepts/hosted-vs-self-hosted) — the parity commitment.
+- [Agent platform quickstart](/oss/headless/index) — spin up `apps/mcp` for agent banking.

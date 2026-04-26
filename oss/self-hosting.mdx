@@ -1,0 +1,203 @@
+---
+title: "Self-hosting Glide"
+description: "Operator runbook for running Glide outside Glide Cloud — env posture, deploy targets, operational keys, migrations, backups, observability, compliance disclaimers."
+icon: 'server'
+---
+
+
+This guide is the source of truth for operating Glide outside of Glide Cloud. Read it before pointing real money at the stack.
+
+## Honest positioning
+
+Glide OSS is a **self-hostable orchestration shell**, not a self-hostable bank stack. You bring your own:
+
+- **Privy Multi-tenant tenant** — auth + embedded wallets. OSS is Privy-only in v1; there is no swap-in alternative.
+- **Bridge / Noah / Avenia / IDRX / etc. contracts** — fiat rails. The OSS Cathedral ships every connector adapter (`packages/connectors/<vendor>/`), but the vendor relationship is yours.
+- **Chainalysis / TRM / Elliptic** — sanctions screening. The Chainalysis adapter ships under MIT; using it requires your own contract per the `DISCLAIMER.md` in the package.
+- **Coinbase x402 facilitator** (optional) — required for the x402 payer/recipient flow that lands with M2.5.
+- **Ory Hydra or BYO OAuth AS** (optional) — required for the M2.5 agent banking surface.
+
+If a vendor you need isn't listed: see `packages/connectors/_base/` for the capability interface contracts. The OSS plan accepts community-contributed connectors per the M5 partner-PR flow.
+
+## 90-second TTHW (time to hello, world)
+
+The champion-tier metric the M3 plan calls for. From a fresh machine with Docker + Node 22 + pnpm installed:
+
+```bash
+git clone https://github.com/darshanbathija/axtior-neobank.git
+cd axtior-neobank
+pnpm install
+docker compose up -d                          # Postgres 16, Redis 7, Inngest dev
+bash scripts/generate-keys.sh > .env.keys     # dev-only secrets
+cat .env.keys >> apps/web/.env.local          # then add Privy creds (see below)
+bash scripts/run-agent-platform-migrations.sh # apply schema
+GLIDE_USE_MOCK_CONNECTORS=true pnpm --filter web dev
+# → open http://localhost:3000/health  → {"status":"ok"}
+```
+
+Privy is the only required vendor for demo bring-up. Sign up at [privy.io](https://privy.io), create a Multi-tenant tenant, copy the App ID + App Secret into `.env.local`:
+
+```env
+NEXT_PUBLIC_PRIVY_APP_ID=clxxxxxxxxxxxxxx
+PRIVY_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
+```
+
+For the alternative `npx`-flavored bring-up (M3 OSS scaffolder):
+
+```bash
+npx create-glide-app my-bank
+cd my-bank
+docker compose up -d
+# follow my-bank/README.md for the rest
+```
+
+## Environment posture
+
+### Demo posture (zero real-money corridor)
+
+```env
+NODE_ENV=development
+GLIDE_USE_MOCK_CONNECTORS=true        # forces sandbox variants of every connector
+SCREENING_PROVIDER=chainalysis-mock   # deterministic OFAC fixtures
+BALANCE_PROVIDER=rpc-direct           # zero-vendor balance reads (you supply RPCs)
+SECRETS_BACKEND=env-file              # default — reads from process.env
+
+# RPCs (only when BALANCE_PROVIDER=rpc-direct)
+ETHEREUM_RPC_URL=https://eth.llamarpc.com
+BASE_RPC_URL=https://mainnet.base.org
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+```
+
+### Production posture (real-money corridor)
+
+```env
+NODE_ENV=production
+SECRETS_BACKEND=doppler               # or aws-sm / vault when those land
+DOPPLER_TOKEN=...
+DOPPLER_PROJECT=glide-prod
+DOPPLER_CONFIG=production
+
+# Vendor credentials — none can be missing without the boot-time fail-closed
+# audit firing. See apps/web/src/server/adapters/index.ts for the contract.
+NEXT_PUBLIC_PRIVY_APP_ID=...
+PRIVY_APP_SECRET=...
+CHAINALYSIS_API_KEY=...
+ALCHEMY_API_KEY=...
+BRIDGE_API_KEY=...
+NOAH_API_KEY=...
+# … etc per the connector you've activated for each vendor_tag
+```
+
+Run `pnpm glide doctor` after wiring env to confirm every layer is reachable.
+
+## Operational keys
+
+Glide Cloud AND self-hosters hold three EVM operational keys + one Solana recovery key. Per the M0 plan §"Operational keys detail":
+
+| Key                                     | What it can do                                           | What it cannot do                                    | Blast radius        |
+| --------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- | ------------------- |
+| `TREASURY_OPERATOR_EVM_PRIVATE_KEY`     | Signs the operator's own revenue-share Safe              | Touch user vaults, originate user-tx                 | Operator's own Safe |
+| `USER_MULTISIG_RELAYER_EVM_PRIVATE_KEY` | Broadcasts pre-signed M-of-N bundles                     | Originate calldata, modify tx, sign for users        | Gas relay only      |
+| `GLIDE_RECOVERY_EVM_PRIVATE_KEY`        | Propose owner-set / threshold changes on user 1/1 vaults | Execute without 72h Zodiac Delay timelock + non-veto | Recovery proposals  |
+| `GLIDE_RECOVERY_SOLANA_PRIVATE_KEY`     | Propose Squads multisig recovery                         | Execute without timelock + non-veto                  | Recovery proposals  |
+
+**For development:** `bash scripts/generate-keys.sh` emits random hex/base58 placeholders. Pipe to `.env.local`.
+
+**For production:** generate keys in a KMS (AWS KMS / HashiCorp Vault / GCP KMS). Never commit them, never let them touch shell history. Rotate per a documented cadence — start at quarterly for treasury / annual for recovery (the recovery cadence is balanced against the user-veto window).
+
+## Deploy targets
+
+The OSS Cathedral targets four reference deploy patterns. Each has its own pros/cons; pick the one that matches your operational comfort level.
+
+### 1. Fly.io (recommended for solo self-hosters)
+
+- **Web:** `apps/web` deploys via `fly launch` with the auto-detected Next.js builder.
+- **Worker:** `apps/web` Inngest functions run inside the same Fly app.
+- **MCP** (M2.5+): `apps/mcp` deploys as a separate Fly app.
+- **Postgres:** Fly Postgres or Supabase.
+- **Redis:** Upstash Redis (ships free tier; paid for prod).
+
+```bash
+fly launch --copy-config --name my-glide-web
+fly secrets set NEXT_PUBLIC_PRIVY_APP_ID=...
+fly deploy
+```
+
+### 2. Railway
+
+Single-region, push-to-deploy. Good for staging / non-US corridors.
+
+### 3. Render
+
+Long-history Heroku-replacement; good if you already have Render.
+
+### 4. Bare Docker on a VPS
+
+For operators who want infra control. The base `docker-compose.yml` boots Postgres + Redis + Inngest; `docker-compose.demo.yml` overlay layers in the demo posture.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up
+```
+
+A Kubernetes Helm chart is a stretch goal; not in M3.
+
+## Migrations
+
+Per `CLAUDE.md` §"Database migrations":
+
+> **Migration files are the source of truth**, not `drizzle-kit generate`. All migrations under `apps/web/drizzle/*.sql` are hand-authored.
+>
+> **`apps/web/drizzle/meta/_journal.json` is NOT authoritative.** It tracks only the original 0000/0001 scaffold; every migration from 0002 onward applies via the custom runner.
+
+For self-hosted upgrades, run the existing script:
+
+```bash
+DATABASE_URL=postgres://... bash scripts/run-agent-platform-migrations.sh
+```
+
+The runner is forward-only. For rollback, restore from a backup. For staging environments, the standard pattern is: apply migrations → run smoke tests → cut over with DNS.
+
+## Backups
+
+The OSS Cathedral does NOT ship a backup orchestrator. The base posture:
+
+- **Postgres:** rely on the deploy target's managed backup (Fly Postgres snapshots, RDS automated backups, etc.) at a minimum daily cadence with point-in-time recovery.
+- **Redis:** ephemeral. Inngest job state is durable in Postgres; Redis is rate-limit + cache only.
+- **Secrets:** the secrets backend (Doppler / AWS-SM / Vault) is the source of truth. The DB stores `secretRef`s, never plaintext.
+
+For real-money corridors, layer on:
+
+- **Off-site replica** in a different region.
+- **Cold backup** (encrypted S3 Glacier / equivalent) at quarterly cadence at minimum.
+- **Disaster-recovery rehearsal** at annual cadence.
+
+## Observability
+
+OSS ships:
+
+- `/health` — liveness probe (200 OK with `{"status":"ok"}`).
+- `/api/health` — readiness probe (Postgres + Redis + push reachability).
+- Sentry hook in the fail-closed audit (M2). Set `SENTRY_DSN` to wire `@sentry/nextjs`.
+
+Glide Cloud uses BetterStack; OSS users can pick anything that consumes a Sentry-compatible DSN. Glitchtip is a drop-in Sentry replacement.
+
+A `/metrics` Prometheus endpoint + reference Grafana dashboards land in a follow-up milestone (per OSS plan §10).
+
+## Compliance disclaimers
+
+- **Sanctions screening:** `SCREENING_PROVIDER=permissive` is REFUSED under `NODE_ENV=production` unless `GLIDE_ALLOW_PERMISSIVE_SANCTIONS_IN_PROD=true` is explicitly set. Don't override unless you have a documented compensating control.
+- **Mock connectors in production:** `GLIDE_USE_MOCK_CONNECTORS=true` is REFUSED under `NODE_ENV=production` unless `GLIDE_ALLOW_MOCKS_IN_PROD=true` is explicitly set. Reserved for staging / smoke tests against production-shaped infra.
+- **AML posture:** every connector's manifest declares an `amlPosture` field. `pass-through` means the vendor handles AML; `vendor-screened` means the vendor + an upstream screening capability handle it; `unscreened` (only `sanctions-permissive`) means there is no AML coverage.
+
+## Where to file issues
+
+- Bugs / docs holes: GitHub issues on `axtior-neobank`.
+- Security vulnerabilities: `security@axtior.com` per `SECURITY.md`.
+- Connector partner submissions: see `CONTRIBUTING.md` (lands with M5).
+
+## What's NOT in this doc
+
+- Trust Console operator runbook (M4).
+- Agent-platform / MCP setup (M2.5).
+- Public standards URLs at `glide.co/schemas/agent-banking/draft/`.
+- `glide partner submit` CLI flow (M5.5).

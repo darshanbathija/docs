@@ -1,0 +1,59 @@
+---
+title: "Money-safety contracts (F-rules)"
+description: "The IRON RULE invariants every money-touching path observes. Operators who remove any of them assume liability for the resulting deployment."
+icon: 'shield-check'
+---
+
+Glide's agent platform encodes six named money-safety invariants — the **F-rules**. Every money-touching tool path observes them. They are **architectural commitments**, not optional defenses; operators who fork the platform and remove any rule accept full liability for the resulting deployment.
+
+## The rules
+
+| Rule | What it guarantees | Where in code |
+| --- | --- | --- |
+| **F1** — Server-side RPC verify | `x402.pay` persists `on_chain_tx` from `serverFetchChainTx()` (RPC), NEVER from facilitator receipt. Tampered facilitator-claims REJECTED. | `apps/mcp/src/tools/x402-pay.ts` |
+| **F2** — CAS-claim before broadcast | `agent_pending_payments` rows claimed via SQL `UPDATE ... WHERE status='pending' AND claimed_at IS NULL RETURNING id`. Race losers skip. Inngest re-fires never double-broadcast. | Migration `0041_agent_pending_payments.sql` + saga-reaper `0044` |
+| **F3** — Fresh-read tenant verification | `@glide/grant-wrapper` re-reads tenant from DB on every tool invocation. Cached grant alone NEVER authorizes. | `@glide/grant-wrapper` |
+| **F4** — Append-only `activity_log` trigger | UPDATE/DELETE/TRUNCATE rejected unless `app.dsar_context_id` session var set (admin DSAR path only). DSAR UPDATE additionally requires `redacted_fields_bitmap` match. | Migration `0042_activity_log_agent_cols.sql` |
+| **F5** — Atomic policy_version on signer rotation | `vault.rotateSigner` advances `policy_version` in the same transaction as the on-chain rotation. In-flight tool calls see `PolicyStaleError` on the next evaluation. | `apps/web/src/server/lib/agent-multisig/` |
+| **F7** — Sigil first-use-only | URL-mode elicitation sigils CAS-claimed on first use; race losers reject. Replay-resistant step-up. | `apps/mcp/src/step-up/` |
+
+(F6 reserved.)
+
+## Why each rule exists
+
+### F1 — Don't trust the receipt; trust the chain.
+
+A facilitator can post a `payments.received` event making it look like settlement happened on-chain when it didn't. F1 says: **persist what the RPC node observed, not what the facilitator claims.** Tamper tests in `apps/mcp/src/tools/__tests__/x402-pay.test.ts` exercise the divergence path.
+
+### F2 — Treat every job re-fire as adversarial.
+
+Inngest re-fires jobs after transient crashes. Without a single-claim guarantee, two workers attempt to broadcast the same payment. F2's CAS-claim closes that window: only the worker that wins `UPDATE ... RETURNING` proceeds.
+
+The saga-reaper (migration `0044`) cleans up workers that crashed AFTER claim but BEFORE broadcast.
+
+### F3 — A grant is a snapshot. Tenant is the source of truth.
+
+Bearer grants are valid until `exp`. Between issue and use, the principal's tenant membership might be revoked, transferred, or suspended. F3 says: **re-read the tenant row on every tool call, before authorizing.** `@glide/grant-wrapper` is the single point of truth.
+
+### F4 — Audit log integrity is non-negotiable.
+
+A compromised admin or rogue insider could tamper with `activity_log` to hide an exfiltration event. F4 enforces append-only via Postgres trigger. Even admin DSAR redaction requires a session var (`app.dsar_context_id`) AND a `redacted_fields_bitmap` match — historical existence is preserved.
+
+### F5 — Don't sign with a rotated-out key.
+
+A signer rotation transaction advances `policy_version`. Tool calls compare the grant's `policy_version` to current; mismatch → `PolicyStaleError` and the agent re-fetches a fresh grant. Without F5, in-flight tool calls could sign against keys that were rotated out mid-flight.
+
+### F7 — Sigils are single-use.
+
+URL-mode elicitation sigils (the step-up tokens) MUST be CAS-claimed on first use. Without F7, a captured sigil URL could be replayed after the principal completes biometric approval.
+
+## What if I want to disable an F-rule?
+
+Don't.
+
+If you absolutely must — for a fork that's not connected to a real-money corridor, for example — document it explicitly in your `apps/mcp/COMPLIANCE.md` divergence section + bump the `policy_version` to advertise the change. Operators downstream of you need to know.
+
+## Reading list
+
+- [Threat model](/oss/security/threat-model) — STRIDE pass with F-rules as primary mitigations.
+- [Agent platform self-host](/oss/headless/self-hosting) — operator-facing F-rule guide.

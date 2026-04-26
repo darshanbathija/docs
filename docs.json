@@ -140,6 +140,71 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "OSS",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "oss/index",
+              "oss/quickstart",
+              "oss/self-hosting"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "oss/concepts/orchestration-shell",
+              "oss/concepts/hosted-vs-self-hosted",
+              "oss/concepts/money-safety-contracts"
+            ]
+          },
+          {
+            "group": "Connectors",
+            "pages": [
+              "oss/connectors/index",
+              "oss/connectors/extending"
+            ]
+          },
+          {
+            "group": "Agent skills",
+            "pages": [
+              "oss/skills/index",
+              "oss/skills/authoring"
+            ]
+          },
+          {
+            "group": "Headless MCP",
+            "pages": [
+              "oss/headless/index",
+              "oss/headless/quickstart",
+              "oss/headless/self-hosting",
+              "oss/headless/oauth-flow",
+              "oss/headless/tool-reference",
+              "oss/headless/partner-registries"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "oss/security/threat-model",
+              "oss/security/license-compatibility"
+            ]
+          },
+          {
+            "group": "Standards",
+            "pages": [
+              "oss/standards/index",
+              "oss/standards/connector-manifest",
+              "oss/standards/agent-policy-envelope",
+              "oss/standards/skill-manifest",
+              "oss/standards/grant",
+              "oss/standards/receipt",
+              "oss/standards/trust-tier"
+            ]
+          }
+        ]
       }
     ],
     "global": {

@@ -1,0 +1,91 @@
+---
+title: "AgentPolicyEnvelope (draft)"
+description: "13-axis policy envelope evaluated by @glide/policy-engine on every agent tool call."
+icon: 'shield'
+---
+
+The policy envelope is the multisig-governed permission boundary every agent operates inside. Issued at install time, attached to every grant JWT, evaluated server-side on every tool invocation.
+
+## Canonical URL
+
+[`https://glide.co/schemas/agent-banking/draft/agent-policy-envelope.json`](https://glide.co/schemas/agent-banking/draft/agent-policy-envelope.json)
+
+## 13 axes
+
+The envelope captures three categories of constraint:
+
+### Amount ceilings (3 axes)
+
+| Axis | Meaning |
+| --- | --- |
+| `per_tx_max` | Hard upper bound on a single transaction. |
+| `daily_cap` | Cumulative cap on the trailing 24-hour window. |
+| `monthly_cap` | Cumulative cap on the trailing 30-day window. |
+
+### Counterparty + chain (4 axes)
+
+| Axis | Meaning |
+| --- | --- |
+| `counterparty_allowlist` | Pre-approved beneficiary IDs / wallet addresses. Empty = open allowlist (skill must populate at install time). |
+| `counterparty_blocklist` | Explicit denial list (overrides allowlist). |
+| `allowed_chains` | EVM chain IDs + Solana mainnet identifier. |
+| `allowed_tokens` | Asset symbols + contract addresses. |
+
+### Velocity + time (3 axes)
+
+| Axis | Meaning |
+| --- | --- |
+| `velocity_caps` | Sliding-window count cap (e.g. "max 20 transfers per hour"). |
+| `time_window` | Allowed wall-clock hours per timezone. |
+| `cooldown_minutes` | Minimum gap between transfers to the same counterparty. |
+
+### Approval (3 axes)
+
+| Axis | Meaning |
+| --- | --- |
+| `step_up_threshold_usd_cents` | Amount above which step-up biometric approval is required. |
+| `pre_broadcast_simulation_required` | Boolean: must `payments:simulate` before `payments:initiate`. |
+| `multisig_threshold` | M-of-N for any custodial vault rotation. |
+
+## Branch A' (Privy spike result)
+
+Per the Headless v1 Privy spike (`docs/designs/privy-policy-spike.md`):
+
+- **EVM:** all 13 axes enforce on Privy programmable signing policy NATIVELY. `per_tx_max`, `counterparty_allowlist`, `time_window`, `daily_cap`, `velocity_caps` all native.
+- **Solana:** `per_tx_max`, `counterparty_allowlist`, `time_window` enforce natively. Stateful aggregation (`daily_cap`, `velocity_caps`) lives in the router Redis layer.
+
+The `@glide/policy-engine` is chain-agnostic — `evaluate()` is pure-function and returns ALLOW/DENY with reason codes. The caller (Privy native or router Redis) chooses where to enforce.
+
+## Example
+
+```json
+{
+  "per_tx_max": { "amount_usd_cents": 250000, "asset": "USDC" },
+  "daily_cap": { "amount_usd_cents": 1000000 },
+  "counterparty_allowlist": [
+    { "kind": "evm_address", "value": "0xabc..." },
+    { "kind": "evm_address", "value": "0xdef..." }
+  ],
+  "velocity_caps": [
+    { "window_minutes": 60, "max_count": 20 }
+  ],
+  "step_up_threshold_usd_cents": 50000,
+  "policy_version": 1
+}
+```
+
+## `policy_version`
+
+Every envelope carries a monotonic `policy_version` counter. Mid-flight policy changes (signer rotation, tier change) advance it; in-flight tool calls compare against current and raise `PolicyStaleError` on mismatch (F5 IRON RULE).
+
+## Relation to skill policy templates
+
+`SkillManifest` ships a `policyTemplate` that's a strict subset of `AgentPolicyEnvelope`. Skills only specify the axes that make sense for their flow (e.g. an x402 skill specifies per_call + daily_cap; an AP skill specifies per_tx_max + counterparty_allowlist + daily_cap).
+
+The principal can tighten any axis at install time. Loosening above the package default requires editing the policy template + a fresh install.
+
+## Reading list
+
+- [Money-safety contracts](/oss/concepts/money-safety-contracts) — F5 (atomic policy_version on signer rotation).
+- [SkillManifest](/oss/standards/skill-manifest) — how skills consume the envelope.
+- [Authoring a skill](/oss/skills/authoring) — 4-tier policy preset pattern.
