@@ -1,0 +1,136 @@
+---
+title: "skills.list"
+description: "Catalog of installable skills from glide.co/skills. Each skill advertises its runtime compatibility and whether its upstream dependencies are live in this envir"
+icon: "eye"
+---
+
+Catalog of installable skills from glide.co/skills. Each skill advertises its runtime compatibility and whether its upstream dependencies are live in this environment.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `skills.list` |
+| Category | `read` |
+| Required scope | `agents:read` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Browse Skills |
+| Read-only | yes |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "category_filter": {
+      "default": "all",
+      "type": "string",
+      "enum": [
+        "ap",
+        "treasury",
+        "consumer",
+        "payroll",
+        "x402",
+        "all"
+      ]
+    }
+  },
+  "required": [
+    "category_filter"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ap",
+              "treasury",
+              "consumer",
+              "payroll",
+              "x402"
+            ]
+          },
+          "runtime_compat": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "claude-desktop",
+                "chatgpt-apps",
+                "vertex",
+                "openclaw",
+                "hermes"
+              ]
+            }
+          },
+          "dependencies_live": {
+            "type": "boolean"
+          },
+          "install_url": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "required": [
+          "slug",
+          "display_name",
+          "tagline",
+          "category",
+          "runtime_compat",
+          "dependencies_live",
+          "install_url"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "skills",
+    "fetched_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `agents:read` scope. Grants with broader scopes (e.g. `*`) are accepted.

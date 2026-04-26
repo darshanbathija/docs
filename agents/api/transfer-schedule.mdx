@@ -1,0 +1,142 @@
+---
+title: "transfer.schedule"
+description: "Schedule a future-dated transfer. Envelope is evaluated at schedule time AND again at execute time; policy bumps between the two can still deny the scheduled tr"
+icon: "pen"
+---
+
+Schedule a future-dated transfer. Envelope is evaluated at schedule time AND again at execute time; policy bumps between the two can still deny the scheduled transfer.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `transfer.schedule` |
+| Category | `write` |
+| Required scope | `payments:initiate` |
+| Idempotency key required | yes |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Schedule Transfer |
+| Read-only | no |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "counterparty": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chain": {
+          "type": "string",
+          "enum": [
+            "eth",
+            "base",
+            "arb",
+            "op",
+            "polygon",
+            "sol"
+          ]
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "address",
+        "chain",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8
+    },
+    "execute_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "memo": {
+      "type": "string",
+      "maxLength": 280
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "counterparty",
+    "amount_cents",
+    "currency",
+    "execute_at",
+    "idempotency_key"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "scheduled_transfer_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "execute_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "policy_version_at_schedule": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "enqueued_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "scheduled_transfer_id",
+    "execute_at",
+    "policy_version_at_schedule",
+    "enqueued_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `payments:initiate` scope. Grants with broader scopes (e.g. `*`) are accepted.

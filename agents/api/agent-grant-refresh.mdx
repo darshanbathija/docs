@@ -1,0 +1,111 @@
+---
+title: "agent.grant.refresh"
+description: "Re-issue this agent's grant under the current policy version when the new policy is unchanged-or-narrowed vs the issue-time version. No step-up required (refres"
+icon: "shield-halved"
+---
+
+Re-issue this agent's grant under the current policy version when the new policy is unchanged-or-narrowed vs the issue-time version. No step-up required (refresh is definitionally non-escalating). Throws InvalidParamsError if the new policy expands authority — caller must use agent.grant.issue with step-up to acquire the broader scope.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `agent.grant.refresh` |
+| Category | `treasury` |
+| Required scope | `agent:budget:create` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Refresh Grant (no step-up) |
+| Read-only | no |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "grant_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "bearer_token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "accounts:read",
+          "agents:read",
+          "payments:initiate",
+          "payments:simulate",
+          "cards:manage",
+          "agent:budget:create",
+          "agent:budget:revoke",
+          "beneficiary:write",
+          "x402:pay",
+          "x402:receive",
+          "audit:stream",
+          "treasury:rotate-signer",
+          "treasury:yield-allocate"
+        ]
+      }
+    },
+    "old_policy_version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "new_policy_version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "policy_changed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "grant_id",
+    "bearer_token",
+    "expires_at",
+    "scope",
+    "old_policy_version",
+    "new_policy_version",
+    "policy_changed"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `agent:budget:create` scope. Grants with broader scopes (e.g. `*`) are accepted.

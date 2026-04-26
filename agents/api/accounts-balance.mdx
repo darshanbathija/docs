@@ -1,0 +1,126 @@
+---
+title: "accounts.balance"
+description: "Per-chain, per-token balance of the agent vault. Amounts returned in both cents (USD-normalized via current FX where applicable) and native units."
+icon: "eye"
+---
+
+Per-chain, per-token balance of the agent vault. Amounts returned in both cents (USD-normalized via current FX where applicable) and native units.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `accounts.balance` |
+| Category | `read` |
+| Required scope | `accounts:read` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Account Balance |
+| Read-only | yes |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "vault_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "chain": {
+      "type": "string",
+      "enum": [
+        "eth",
+        "base",
+        "arb",
+        "op",
+        "polygon",
+        "sol"
+      ]
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "balances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chain": {
+            "type": "string",
+            "enum": [
+              "eth",
+              "base",
+              "arb",
+              "op",
+              "polygon",
+              "sol"
+            ]
+          },
+          "token": {
+            "type": "string"
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "native_unit_value": {
+            "type": "string"
+          },
+          "usd_equivalent_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "chain",
+          "token",
+          "amount_cents",
+          "native_unit_value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "balances",
+    "fetched_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `accounts:read` scope. Grants with broader scopes (e.g. `*`) are accepted.

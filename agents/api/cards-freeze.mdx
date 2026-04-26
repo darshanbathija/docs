@@ -1,0 +1,92 @@
+---
+title: "cards.freeze"
+description: "Freeze a previously issued card. The card will reject subsequent authorizations until unfrozen (unfreeze tool ships in v1.1)."
+icon: "pen"
+---
+
+Freeze a previously issued card. The card will reject subsequent authorizations until unfrozen (unfreeze tool ships in v1.1).
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `cards.freeze` |
+| Category | `write` |
+| Required scope | `cards:manage` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Freeze Card |
+| Read-only | no |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "card_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "reason": {
+      "default": "user_request",
+      "type": "string",
+      "enum": [
+        "user_request",
+        "anomaly",
+        "admin_kill_switch",
+        "expired_agent"
+      ]
+    }
+  },
+  "required": [
+    "card_id",
+    "reason"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "card_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "frozen_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "card_id",
+    "frozen_at",
+    "reason"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `cards:manage` scope. Grants with broader scopes (e.g. `*`) are accepted.

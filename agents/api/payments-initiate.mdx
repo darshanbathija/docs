@@ -1,0 +1,160 @@
+---
+title: "payments.initiate"
+description: "Initiate a payment inside the agent vault envelope. Amounts over the step-up threshold return a pending_step_up response with a URL the user must visit. All on-"
+icon: "pen"
+---
+
+Initiate a payment inside the agent vault envelope. Amounts over the step-up threshold return a pending_step_up response with a URL the user must visit. All on-chain broadcast happens asynchronously via Inngest with a CAS-claim to prevent double-send (PLAN.md F2). on_chain_tx fields on the resulting receipt are server-fetched from RPC, never trusted from the facilitator (PLAN.md F1).
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `payments.initiate` |
+| Category | `write` |
+| Required scope | `payments:initiate` |
+| Idempotency key required | yes |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Initiate Payment |
+| Read-only | no |
+| Destructive | yes |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | yes (step-up) |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "counterparty": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "minLength": 1
+        },
+        "chain": {
+          "type": "string",
+          "enum": [
+            "eth",
+            "base",
+            "arb",
+            "op",
+            "polygon",
+            "sol"
+          ]
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "address",
+        "chain",
+        "token"
+      ],
+      "additionalProperties": false
+    },
+    "amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8
+    },
+    "memo": {
+      "type": "string",
+      "maxLength": 280
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "mcc": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 4
+    },
+    "geo": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 2
+    }
+  },
+  "required": [
+    "counterparty",
+    "amount_cents",
+    "currency",
+    "idempotency_key"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "pending_step_up"
+      ]
+    },
+    "pending_payment_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "policy_version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "risk_verdict": {
+      "type": "string",
+      "enum": [
+        "allow",
+        "allow_with_step_up"
+      ]
+    },
+    "step_up_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "enqueued_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "kind",
+    "pending_payment_id",
+    "policy_version",
+    "risk_verdict",
+    "enqueued_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `payments:initiate` scope. Grants with broader scopes (e.g. `*`) are accepted.

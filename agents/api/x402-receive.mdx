@@ -1,0 +1,135 @@
+---
+title: "x402.receive"
+description: "Return this agent's x402 receive endpoints. Every Glide vault is x402-addressable out of the box — other agents can pay this agent via the standard x402 handsha"
+icon: "eye"
+---
+
+Return this agent's x402 receive endpoints. Every Glide vault is x402-addressable out of the box — other agents can pay this agent via the standard x402 handshake without Glide running a separate receiver service.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `x402.receive` |
+| Category | `read` |
+| Required scope | `x402:receive` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Describe x402 Receive Endpoints |
+| Read-only | yes |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "chain": {
+      "type": "string",
+      "enum": [
+        "eth",
+        "base",
+        "arb",
+        "op",
+        "polygon",
+        "sol"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "chain": {
+            "type": "string",
+            "enum": [
+              "eth",
+              "base",
+              "arb",
+              "op",
+              "polygon",
+              "sol"
+            ]
+          },
+          "token": {
+            "type": "string"
+          },
+          "receiving_address": {
+            "type": "string",
+            "minLength": 1
+          },
+          "min_amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "max_amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "text/plain",
+                "application/json"
+              ]
+            }
+          }
+        },
+        "required": [
+          "url",
+          "chain",
+          "token",
+          "receiving_address",
+          "min_amount_cents",
+          "max_amount_cents",
+          "accepts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "endpoints",
+    "fetched_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `x402:receive` scope. Grants with broader scopes (e.g. `*`) are accepted.

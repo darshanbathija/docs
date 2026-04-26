@@ -1,0 +1,54 @@
+---
+title: "MCP tool reference"
+description: "Auto-generated from the apps/mcp tool catalog. Every tool, every input, every output schema."
+icon: "list"
+---
+
+Glide Headless exposes its tools through three MCP endpoints:
+
+- `/mcp/read` — non-mutating queries (`tools/list`, balances, etc.)
+- `/mcp/write` — mutating actions (issue grants, run payroll, freeze cards)
+- `/mcp/treasury` — high-privilege treasury actions (kill switch, signer rotation)
+
+Each tool below shows its required scope, annotations, and exact input/output JSON Schemas. Schemas are auto-generated from the source-of-truth Zod definitions in `apps/mcp/src/tools/`.
+
+## Read tools
+
+| Tool | Description |
+| ---- | ----------- |
+| [`accounts.balance`](/agents/api/accounts-balance) | Per-chain, per-token balance of the agent vault. Amounts returned in both cents (USD-normalized via current FX where app |
+| [`accounts.list`](/agents/api/accounts-list) | List the accounts this agent can operate on. Scoped strictly to the grant's aud.vault_id — a sibling agent's vault is ne |
+| [`agents.list`](/agents/api/agents-list) | List sibling agents under the same principal/entity. Useful for cross-agent UIs; doesn't expose another agent's envelope |
+| [`audit.stream`](/agents/api/audit-stream) | Mint a cursor for subscribing to this agent's event stream over SSE. The cursor is bound to the current grant — when the |
+| [`payments.simulate`](/agents/api/payments-simulate) | Run the full policy envelope evaluation against a proposed payment. Returns the verdict + every reason without any side  |
+| [`skills.list`](/agents/api/skills-list) | Catalog of installable skills from glide.co/skills. Each skill advertises its runtime compatibility and whether its upst |
+| [`transactions.list`](/agents/api/transactions-list) | Paginated list of this agent's transactions. Scoped to the agent; sibling agents' history never appears. Use cursor for  |
+| [`x402.receive`](/agents/api/x402-receive) | Return this agent's x402 receive endpoints. Every Glide vault is x402-addressable out of the box — other agents can pay  |
+## Write tools
+
+| Tool | Description |
+| ---- | ----------- |
+| [`beneficiary.add`](/agents/api/beneficiary-add) | Propose adding a counterparty to the agent's envelope allowlist. Per the multisig allowlist gate, allowlist mutations ar |
+| [`cards.freeze`](/agents/api/cards-freeze) | Freeze a previously issued card. The card will reject subsequent authorizations until unfrozen (unfreeze tool ships in v |
+| [`cards.issue`](/agents/api/cards-issue) | Issue a scoped virtual card against the agent sub-vault. The card carries its own MCC filters, funding cap, and expiry i |
+| [`payments.initiate`](/agents/api/payments-initiate) | Initiate a payment inside the agent vault envelope. Amounts over the step-up threshold return a pending_step_up response |
+| [`payroll.run`](/agents/api/payroll-run) | Kick a payroll batch. Requires V2 payroll infra (Sprint 3-4); returns blocked_by_dep if unavailable, matching PLAN.md he |
+| [`transfer.schedule`](/agents/api/transfer-schedule) | Schedule a future-dated transfer. Envelope is evaluated at schedule time AND again at execute time; policy bumps between |
+| [`x402.pay`](/agents/api/x402-pay) | Pay an x402 micropayment endpoint. Server-side RPC verification of the on-chain tx is MANDATORY — the facilitator receip |
+## Treasury tools
+
+| Tool | Description |
+| ---- | ----------- |
+| [`agent.budget.create`](/agents/api/agent-budget-create) | Spawn a child agent with a scoped multisig sub-vault and a policy envelope. The operation is a saga — on any failure the |
+| [`agent.budget.revoke`](/agents/api/agent-budget-revoke) | Revoke a child agent and optionally auto-sweep its sub-vault back to the parent treasury. Revocation is terminal; spawn  |
+| [`agent.grant.issue`](/agents/api/agent-grant-issue) | Issue a new bearer grant for this agent with a narrowed scope set. Always requires principal step-up — the first call re |
+| [`agent.grant.refresh`](/agents/api/agent-grant-refresh) | Re-issue this agent's grant under the current policy version when the new policy is unchanged-or-narrowed vs the issue-t |
+| [`killSwitch.all`](/agents/api/killSwitch-all) | Atomic kill-switch: revoke every active grant + freeze every sub-vault for this principal. The confirm_scope literal 'AL |
+| [`vault.rotateSigner`](/agents/api/vault-rotateSigner) | Rotate the signing key for this agent's sub-vault. Always requires principal step-up. Completes atomically with a policy |
+| [`yield.allocate`](/agents/api/yield-allocate) | Move funds between yield vaults (Aave/Morpho/Kamino/idle) within the envelope. Blocked by V3 yield infra if that depende |
+
+## Auth model
+
+Every call must carry a Glide-issued grant JWT in the `Authorization: Bearer …` header. Grants are scoped (e.g. `agents:read`, `payments:write`) and tied to a specific principal + agent + entity. The MCP server fresh-reads the tenant from the database on every call so a stolen grant against a stale tenant fails closed.
+
+See [/agents/policy-envelope](/agents/policy-envelope) for the policy contract Glide enforces on top of the grant.

@@ -95,6 +95,34 @@
             "pages": [
               "agents/runtimes"
             ]
+          },
+          {
+            "group": "API reference",
+            "pages": [
+              "agents/api/index",
+              "agents/api/accounts-list",
+              "agents/api/accounts-balance",
+              "agents/api/agents-list",
+              "agents/api/audit-stream",
+              "agents/api/skills-list",
+              "agents/api/transactions-list",
+              "agents/api/agent-budget-create",
+              "agents/api/agent-budget-revoke",
+              "agents/api/beneficiary-add",
+              "agents/api/cards-freeze",
+              "agents/api/cards-issue",
+              "agents/api/payments-initiate",
+              "agents/api/payments-simulate",
+              "agents/api/payroll-run",
+              "agents/api/transfer-schedule",
+              "agents/api/x402-pay",
+              "agents/api/x402-receive",
+              "agents/api/agent-grant-issue",
+              "agents/api/agent-grant-refresh",
+              "agents/api/killSwitch-all",
+              "agents/api/vault-rotateSigner",
+              "agents/api/yield-allocate"
+            ]
           }
         ]
       },

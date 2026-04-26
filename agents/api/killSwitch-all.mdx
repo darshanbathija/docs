@@ -1,0 +1,99 @@
+---
+title: "killSwitch.all"
+description: "Atomic kill-switch: revoke every active grant + freeze every sub-vault for this principal. The confirm_scope literal 'ALL_AGENTS_THIS_PRINCIPAL' is required to "
+icon: "shield-halved"
+---
+
+Atomic kill-switch: revoke every active grant + freeze every sub-vault for this principal. The confirm_scope literal 'ALL_AGENTS_THIS_PRINCIPAL' is required to prevent accidental invocation.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `killSwitch.all` |
+| Category | `treasury` |
+| Required scope | `agent:budget:revoke` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Kill Switch (All Agents) |
+| Read-only | no |
+| Destructive | yes |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "default": "user_request",
+      "type": "string",
+      "enum": [
+        "user_request",
+        "anomaly",
+        "compromised_key",
+        "migration"
+      ]
+    },
+    "confirm_scope": {
+      "type": "string",
+      "const": "ALL_AGENTS_THIS_PRINCIPAL"
+    }
+  },
+  "required": [
+    "reason",
+    "confirm_scope"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "grants_revoked": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "agents_revoked": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "vaults_frozen": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "executed_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "grants_revoked",
+    "agents_revoked",
+    "vaults_frozen",
+    "executed_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `agent:budget:revoke` scope. Grants with broader scopes (e.g. `*`) are accepted.

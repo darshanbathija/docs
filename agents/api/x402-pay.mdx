@@ -1,0 +1,122 @@
+---
+title: "x402.pay"
+description: "Pay an x402 micropayment endpoint. Server-side RPC verification of the on-chain tx is MANDATORY — the facilitator receipt is never trusted for money-safety fiel"
+icon: "pen"
+---
+
+Pay an x402 micropayment endpoint. Server-side RPC verification of the on-chain tx is MANDATORY — the facilitator receipt is never trusted for money-safety fields (PLAN.md F1).
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `x402.pay` |
+| Category | `write` |
+| Required scope | `x402:pay` |
+| Idempotency key required | yes |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Pay x402 Endpoint |
+| Read-only | no |
+| Destructive | yes |
+| Idempotent | yes |
+| Open-world | yes |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "resource_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "max_amount_cents": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "chain": {
+      "type": "string",
+      "enum": [
+        "eth",
+        "base",
+        "arb",
+        "op",
+        "polygon",
+        "sol"
+      ]
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    }
+  },
+  "required": [
+    "resource_url",
+    "max_amount_cents",
+    "chain",
+    "token",
+    "idempotency_key"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "payment_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "amount_cents_paid": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "on_chain_tx": {
+      "type": "string",
+      "pattern": "(?:0x[0-9a-fA-F]{64})|(?:[1-9A-HJ-NP-Za-km-z]{86,88})"
+    },
+    "resource_payload_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64
+    },
+    "paid_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "payment_id",
+    "amount_cents_paid",
+    "on_chain_tx",
+    "resource_payload_sha256",
+    "paid_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `x402:pay` scope. Grants with broader scopes (e.g. `*`) are accepted.

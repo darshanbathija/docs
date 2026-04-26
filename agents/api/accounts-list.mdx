@@ -1,0 +1,116 @@
+---
+title: "accounts.list"
+description: "List the accounts this agent can operate on. Scoped strictly to the grant's aud.vault_id — a sibling agent's vault is never visible even if under the same princ"
+icon: "eye"
+---
+
+List the accounts this agent can operate on. Scoped strictly to the grant's aud.vault_id — a sibling agent's vault is never visible even if under the same principal.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `accounts.list` |
+| Category | `read` |
+| Required scope | `accounts:read` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | List Accounts |
+| Read-only | yes |
+| Destructive | no |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vault_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "chain_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "eth",
+                "base",
+                "arb",
+                "op",
+                "polygon",
+                "sol"
+              ]
+            }
+          },
+          "policy_version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "throttled",
+              "frozen",
+              "sweep_to_parent",
+              "revoked"
+            ]
+          }
+        },
+        "required": [
+          "vault_id",
+          "display_name",
+          "chain_ids",
+          "policy_version",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "accounts",
+    "fetched_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `accounts:read` scope. Grants with broader scopes (e.g. `*`) are accepted.

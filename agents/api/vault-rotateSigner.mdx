@@ -1,0 +1,97 @@
+---
+title: "vault.rotateSigner"
+description: "Rotate the signing key for this agent's sub-vault. Always requires principal step-up. Completes atomically with a policy_version bump."
+icon: "shield-halved"
+---
+
+Rotate the signing key for this agent's sub-vault. Always requires principal step-up. Completes atomically with a policy_version bump.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `vault.rotateSigner` |
+| Category | `treasury` |
+| Required scope | `treasury:rotate-signer` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Rotate Vault Signer |
+| Read-only | no |
+| Destructive | yes |
+| Idempotent | no |
+| Open-world | no |
+| Requires human approval | yes (step-up) |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "new_signer_public_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "default": "scheduled_rotation",
+      "type": "string",
+      "enum": [
+        "scheduled_rotation",
+        "compromised_key",
+        "user_request",
+        "device_change"
+      ]
+    },
+    "step_up_sigil": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "new_signer_public_key",
+    "reason"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "new_policy_version": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "enqueued_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "new_policy_version",
+    "enqueued_at"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `treasury:rotate-signer` scope. Grants with broader scopes (e.g. `*`) are accepted.

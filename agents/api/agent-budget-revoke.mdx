@@ -1,0 +1,104 @@
+---
+title: "agent.budget.revoke"
+description: "Revoke a child agent and optionally auto-sweep its sub-vault back to the parent treasury. Revocation is terminal; spawn a new agent via agent.budget.create to r"
+icon: "shield-halved"
+---
+
+Revoke a child agent and optionally auto-sweep its sub-vault back to the parent treasury. Revocation is terminal; spawn a new agent via agent.budget.create to re-provision.
+
+## Metadata
+
+| Field | Value |
+| ----- | ----- |
+| Name | `agent.budget.revoke` |
+| Category | `treasury` |
+| Required scope | `agent:budget:revoke` |
+| Idempotency key required | no |
+
+## Annotations
+
+| Annotation | Value |
+| ---------- | ----- |
+| Title | Revoke Agent Budget |
+| Read-only | no |
+| Destructive | yes |
+| Idempotent | yes |
+| Open-world | no |
+| Requires human approval | no |
+
+## Input schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "agent_principal_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "auto_sweep": {
+      "default": true,
+      "type": "boolean"
+    },
+    "reason": {
+      "default": "user_request",
+      "type": "string",
+      "enum": [
+        "user_request",
+        "anomaly",
+        "admin_kill_switch",
+        "expired",
+        "migration"
+      ]
+    }
+  },
+  "required": [
+    "agent_principal_id",
+    "auto_sweep",
+    "reason"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Output schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "agent_principal_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+    },
+    "grants_revoked": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "sweep_plan_queued": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "agent_principal_id",
+    "revoked_at",
+    "grants_revoked",
+    "sweep_plan_queued"
+  ],
+  "additionalProperties": false
+}
+```
+
+## Auth
+
+Caller's grant must include the `agent:budget:revoke` scope. Grants with broader scopes (e.g. `*`) are accepted.
