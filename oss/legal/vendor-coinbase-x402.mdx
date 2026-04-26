@@ -1,0 +1,349 @@
+---
+title: "Coinbase x402 vendor posture"
+description: "Operator-facing disclaimer + compliance brief for the Coinbase x402 facilitator adapter. Score: 99.20/100."
+icon: "circle-dollar"
+---
+
+<Note>
+**Canonical source:** [`packages/connectors/coinbase-x402/`](https://github.com/darshanbathija/axtior-neobank/blob/main/packages/connectors/coinbase-x402/)
+
+This page mirrors the canonical file. For execution, copy from the source repo to ensure latest revisions.
+</Note>
+
+
+# Disclaimer — Coinbase x402 Facilitator Adapter
+
+**Status:** Ready for counsel review. Not yet counsel-reviewed. Operators should obtain their own legal advice before deploying this adapter in production.
+
+## TL;DR (non-legal summary, controls nothing)
+
+> Glide ships an MIT-licensed adapter. You — the Operator — bring your own Coinbase contract or run your own facilitator. You — the Operator — are the regulated party. Glide is not Coinbase, not a bank, not a money transmitter. Verify every settlement on-chain before persisting it (the F1 IRON RULE). If you can't accept these terms, don't use the Connector. The numbered sections below are the binding text.
+
+---
+
+This document governs the use of the `@repo/connectors-coinbase-x402` package (the "**Connector**"), a thin adapter shipped as part of the open-source Glide project. By installing, importing, building against, or running the Connector you ("**Operator**" or "**Self-Hoster**") agree to the terms in this document and in the project [LICENSE](../../../LICENSE).
+
+## 1. Definitions
+
+For the avoidance of doubt:
+
+- **"Glide"** means the open-source project maintained by Axtior Inc., a Delaware corporation, and the Glide OSS contributors. Glide ships software under the MIT license. Glide is **not** a bank, money transmitter, money services business, virtual asset service provider, broker-dealer, exchange, custodian, or payment processor. Glide does not custody Operator funds, does not move Operator funds, does not hold Operator customer funds, and does not have any visibility into or control over the on-chain settlement of payments routed through the Connector.
+- **"Operator"** means any natural or legal person who self-hosts, deploys, integrates, distributes, or otherwise runs Glide or the Connector against any live x402 facilitator (hosted or self-hosted), or makes the Connector reachable to any third party.
+- **"Self-Hoster"** means an Operator who additionally runs their own x402 facilitator instance instead of relying on a hosted facilitator vendor. A Self-Hoster is an Operator for all purposes of this document, plus the Self-Hosted Facilitator Path obligations in §6.
+- **"Vendor"** means a third party operating a hosted x402 facilitator. The default Vendor referenced in the Connector source is the Coinbase Developer Platform's hosted x402 facilitator at `x402.coinbase.com`, operated by Coinbase, Inc. and/or its affiliates ("**Coinbase**"). Any other facilitator URL configured by the Operator (via `X402_FACILITATOR_URL` or otherwise) is also a Vendor.
+- **"Connector"** means the source code, types, and primitives in the `@repo/connectors-coinbase-x402` package, including without limitation `CoinbaseFacilitator`, `handleX402Request`, `buildChallengeBody`, and the manifest/capabilities surfaces.
+- **"Facilitator"** means an HTTP service that exposes the x402 `/verify` and `/settle` endpoints as defined in the [x402 specification](https://x402.org). A Facilitator may be operated by a Vendor or by a Self-Hoster.
+- **"Payer"** means the party signing the EIP-712 `transferWithAuthorization` (or equivalent Solana signed transaction) and authorizing the on-chain transfer of value.
+- **"Payee"** means the party whose receiving address is funded as a result of the Payer's signed transaction. In the typical Glide deployment the Payee is a Glide-managed account controlled by the Operator's customer.
+- **"On-Chain"** means the public ledger of the network on which settlement occurs (e.g., Base, Solana, or any other network the Operator configures the Connector to use).
+
+## 2. Vendor relationship — Glide is NOT Coinbase
+
+The Connector is an unaffiliated, independent adapter. Glide:
+
+- has no commercial relationship with Coinbase that grants Operators any rights to the Coinbase Developer Platform or to `x402.coinbase.com`;
+- does not redistribute, sublicense, or resell any Coinbase software, API access, or facilitator capacity;
+- does not act as agent, partner, joint venturer, broker, or representative of Coinbase, and the Connector's existence does not imply endorsement, certification, or sponsorship by Coinbase or by any other Vendor;
+- does not warrant that the Connector is or will remain compatible with Coinbase's facilitator, that Coinbase will continue to operate the facilitator, or that Coinbase's terms permit any particular use case the Operator has in mind.
+
+If the Operator runs the Connector against `x402.coinbase.com` (or any other Coinbase-operated endpoint), the Operator must independently:
+
+1. Hold an active Coinbase Developer Platform account in the Operator's own legal name;
+2. Comply with the Coinbase Developer Platform Terms of Service, the x402 facilitator-specific terms (if any), and all other Coinbase policies (collectively, "**Vendor ToS**"), as those documents may be amended from time to time;
+3. Hold whatever underlying licenses, registrations, charters, or money-transmitter authorities are required to settle stablecoin payments to and from the Operator's customers in every jurisdiction where the Operator offers the service.
+
+**The Connector does not establish, transmit, accept, or imply a contract between the Operator and Coinbase.** Such a contract is the Operator's sole responsibility to procure and maintain.
+
+## 3. Self-hosted facilitator path — the escape hatch
+
+The x402 protocol is open, and Coinbase publishes a reference open-source facilitator implementation at <https://github.com/coinbase/x402>. The Connector treats the facilitator URL as configuration, not as an embedded constant. Any Operator who cannot, will not, or prefers not to enter into the Vendor ToS may instead deploy their own facilitator and point the Connector at it by setting:
+
+```
+X402_FACILITATOR_URL=https://my-facilitator.example.com
+```
+
+Choosing the Self-Hosted Facilitator Path eliminates the Vendor ToS dependency but **does not** eliminate the Operator's settlement, AML, sanctions, money-transmitter, consumer-protection, tax, or other regulatory obligations. A Self-Hoster takes on every duty that the Vendor would otherwise have discharged at the facilitator layer (see §6 and `COMPLIANCE.md` §"Self-hosted facilitator").
+
+Self-hosting is the Operator's explicit fallback whenever the Vendor relationship breaks (denial, suspension, termination, geographic ineligibility, contract dispute, downtime, or strategic preference). Glide commits to keeping `X402_FACILITATOR_URL` configurable and to not introducing any Vendor lock-in into the Connector's runtime path.
+
+## 4. License grant; reservation of rights
+
+The Connector is licensed under the MIT License (see the project [LICENSE](../../../LICENSE)). Subject to the LICENSE, Glide grants the Operator a non-exclusive, royalty-free right to use, copy, modify, and redistribute the Connector source. **No other rights are granted, expressly or by implication.** In particular:
+
+- No license is granted to any Coinbase trademark, service mark, logo, API key, hosted-facilitator capacity, or proprietary documentation. Those rights, if any, must be obtained directly from Coinbase under the Vendor ToS.
+- No license is granted to any Glide trademark or service mark. The "Glide" and "Axtior" names and logos are reserved.
+- The x402 specification itself is published openly by its maintainers; nothing in this document grants or withholds any rights in that specification.
+- All rights not expressly granted in the LICENSE are reserved by Glide and its contributors.
+
+## 5. NO WARRANTY; AS IS / AS AVAILABLE
+
+THE CONNECTOR IS PROVIDED "**AS IS**" AND "**AS AVAILABLE**", WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, ACCURACY, COMPLETENESS, OR QUIET ENJOYMENT.
+
+WITHOUT LIMITING THE FOREGOING, GLIDE SPECIFICALLY DISCLAIMS ANY WARRANTY:
+
+- THAT THE CONNECTOR WILL OPERATE UNINTERRUPTED, ERROR-FREE, OR SECURE;
+- THAT ANY VENDOR (INCLUDING COINBASE) WILL ACCEPT, VERIFY, OR SETTLE ANY GIVEN PAYMENT;
+- THAT ANY FACILITATOR'S `verify` OR `settle` RESPONSE — INCLUDING ANY `transaction` IDENTIFIER IT RETURNS — WILL CORRESPOND TO A REAL, FINAL, OR FRAUD-FREE ON-CHAIN EVENT (see §6 / F1 IRON RULE);
+- THAT THE ON-CHAIN NETWORK WILL CONFIRM, FINALIZE, OR PRESERVE ANY TRANSACTION, OR THAT TRANSACTIONS WILL NOT BE REORGANIZED, FRONT-RUN, CENSORED, OR REVERSED;
+- THAT USE OF THE CONNECTOR IS LAWFUL IN ANY GIVEN JURISDICTION;
+- THAT ANY VENDOR ToS OR REGULATORY REGIME WILL REMAIN STABLE.
+
+ON-CHAIN PAYMENTS ARE GENERALLY IRREVERSIBLE. THE OPERATOR ACCEPTS THAT NEITHER GLIDE NOR ANY FACILITATOR CAN UNWIND A SETTLED ON-CHAIN TRANSFER.
+
+## 6. Operator obligations
+
+By using the Connector, the Operator covenants and agrees that the Operator will:
+
+1. **Hold a valid Vendor contract OR run a Self-Hosted Facilitator.** The Operator must, before pointing the Connector at any non-mock facilitator, either (a) hold an active and unsuspended Vendor account in good standing under the Vendor ToS, or (b) operate a facilitator that the Operator itself controls and is licensed to run. The Operator must not proxy, sublicense, share, or otherwise resell access to any Vendor facilitator account.
+2. **F1 IRON RULE — RPC-verify before persisting.** The Operator MUST treat any `transaction` identifier returned by a Facilitator's `/settle` response as **untrusted input**. Before recording, exposing, crediting, releasing, or otherwise relying on any such transaction, the Operator MUST independently fetch the transaction from a trusted full node or RPC endpoint, confirm the on-chain effects (correct asset, network, sender, receiver, amount, finality threshold), and only then persist. A facilitator may lie, hallucinate, replay, or be compromised; treat its claim as a hint, not a fact. See `COMPLIANCE.md` §"F1 IRON RULE".
+3. **Comply with payment law.** The Operator is solely responsible for all applicable money-transmission, money-services-business, e-money, payment-services, virtual-asset, banking, securities, commodities, consumer-protection, tax (including 1099-K / DAC8 / CARF where applicable), AML/CTF, sanctions (OFAC, UN, EU, UK HMT, and any other relevant regime), GDPR/CCPA/other-privacy, and licensing requirements that attach to the Operator's offering, including obtaining any state Money Transmitter Licenses (MTL), federal FinCEN MSB registration, or non-US equivalent registrations or authorizations applicable in the Operator's chosen jurisdictions.
+4. **Customer-facing terms.** The Operator must publish its own terms of service, privacy policy, and risk disclosures to its customers, and must accurately describe (and not misrepresent) the role of any Vendor or Facilitator in the settlement chain. The Operator must not represent to its customers that Glide or any Glide contributor is a party to or guarantor of any payment.
+5. **Sanctions and screening.** The Operator must implement and maintain sanctions screening sufficient to prevent the Connector from facilitating prohibited transactions in the Operator's jurisdictions. The fact that a Vendor performs its own screening is not a substitute for the Operator's program where the Operator is itself a regulated entity.
+6. **Self-Hosted Facilitator additional duties.** A Self-Hoster must additionally: (a) maintain control of the facilitator's signing keys and infrastructure; (b) implement at the facilitator layer all sanctions / AML / fraud / abuse controls that are required of a money-transmitting facilitator in the Self-Hoster's jurisdictions; (c) run with current x402-spec security patches; (d) not represent the self-hosted facilitator as a Coinbase or Vendor service.
+7. **No regulator-evading routing.** The Operator must not use the Connector to accept payments from, route to, or service customers in any jurisdiction in which the Operator is not licensed or otherwise legally permitted to operate.
+8. **No misrepresentation of Glide.** The Operator must not represent that Glide, Axtior Inc., or any contributor has reviewed, approved, certified, or insured the Operator's deployment, except to the extent the Operator faithfully reproduces Glide's own published statements without alteration.
+
+## 7. Risk allocation
+
+To the maximum extent permitted by applicable law:
+
+1. **Limitation of liability.** In no event will Glide, Axtior Inc., their affiliates, or any Glide contributor be liable to the Operator or to any third party for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any lost profits, lost revenue, lost data, lost goodwill, business interruption, regulatory fines, settlement-finality losses, on-chain reorganization losses, or substitute-product procurement costs, arising out of or in connection with the Connector or the Vendor ToS, even if Glide has been advised of the possibility of such damages. The aggregate liability of Glide and the Glide contributors for any direct damages arising out of or relating to the Connector is limited to one hundred U.S. dollars (US$100), reflecting that the Connector is OSS distributed without fee.
+2. **Operator indemnity.** The Operator will defend, indemnify, and hold harmless Glide, Axtior Inc., their affiliates, officers, directors, employees, agents, and contributors (collectively, the "**Glide Parties**") from and against any and all claims, demands, investigations, actions, fines, penalties, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising out of or related to: (a) the Operator's deployment, configuration, distribution, or use of the Connector; (b) the Operator's failure to comply with any Vendor ToS, applicable law, or §6 obligations above; (c) any Operator-customer dispute, regulatory enforcement action, sanctions violation, or tax assessment connected to payments routed through the Connector; (d) any claim that the Operator misrepresented the role of Glide or any Vendor; or (e) the Operator's failure to RPC-verify under the F1 IRON RULE.
+3. **No agency.** Nothing in this document creates a partnership, joint venture, agency, employment, or fiduciary relationship between Glide and the Operator or between Glide and any Vendor.
+4. **Force majeure / out-of-scope events.** Glide has no control over: (a) Vendor uptime, decisions, policy changes, account actions, or terms-of-service amendments; (b) blockchain network behavior, including reorganizations, fee markets, censorship, validator misbehavior, or finality changes; (c) regulator actions, court orders, sanctions designations, or law changes; (d) the Operator's customers, counterparties, or downstream users. The Glide Parties have no obligation to mitigate, work around, or compensate the Operator for any loss arising from any of (a)–(d). The Operator's sole remedy for such events is to switch facilitators (including to the Self-Hosted Facilitator Path under §3) or to stop using the Connector.
+
+## 8. Termination and survival
+
+1. The Operator's permission to use the Connector is granted under the LICENSE and continues for so long as the Operator complies with the LICENSE and this document. The Operator may stop using the Connector at any time.
+2. If the Operator's Vendor ToS is suspended or terminated by the Vendor (e.g., Coinbase terminates the Operator's Coinbase Developer Platform agreement), the Operator must immediately stop routing live traffic through that Vendor's facilitator. The Self-Hosted Facilitator Path in §3 remains available, subject to the Operator's regulatory posture.
+3. The disclaimers (§5), Operator obligations (§6.2 and §6.3 to the extent referencing already-settled transactions, and §6.8), risk allocation (§7), this §8, and §9–§11 below survive any cessation of the Operator's use of the Connector, indefinitely.
+4. **No Glide-side cure mechanism.** Glide does not operate a support desk, ticketing system, status SLA, or escalation channel for the Connector. If the Operator's Vendor relationship breaks, Glide cannot intervene with the Vendor on the Operator's behalf. The Self-Hosted Facilitator Path (§3) is the Operator's first-class fallback; community channels are best-effort.
+
+## 9. Governing law and dispute resolution
+
+1. **Governing law.** This document is governed by the laws of the State of Delaware, USA, without regard to its conflict-of-laws rules. The UN Convention on Contracts for the International Sale of Goods does not apply.
+2. **Forum.** Any dispute, claim, or controversy arising out of or relating to this document or the Connector that the parties cannot resolve through good-faith negotiation will be submitted to confidential binding arbitration administered by JAMS under its Streamlined Arbitration Rules, before a single arbitrator, seated in San Francisco, California, USA, with the award enforceable in any court of competent jurisdiction. The Operator and Glide each irrevocably waive any right to a jury trial. Notwithstanding the foregoing, either party may seek injunctive relief in a court of competent jurisdiction in Delaware or California to protect its intellectual property or to enforce §6 obligations pending arbitration. **Class actions and consolidated arbitrations are waived to the maximum extent permitted by law.**
+3. **Operator-vs-Vendor disputes are not Glide's.** Any dispute between the Operator and any Vendor (including Coinbase) is solely between those two parties and is not Glide's responsibility, even if the dispute arises in connection with the Connector. Glide will not be a party to, indemnify, or be required to participate in any such dispute.
+
+## 10. IP and confidentiality (vendor pass-through)
+
+1. The Connector source itself is MIT-licensed and not confidential.
+2. Coinbase and other Vendors may treat their API behavior, error codes, rate-limit schedules, internal documentation, beta programs, or unannounced features as confidential under the Vendor ToS. The Operator is responsible for honoring any such Vendor confidentiality obligations and must not assume that observations made through the Connector are public information. Glide makes no warranty about whether the Connector's logs, traces, or telemetry might inadvertently capture Vendor-confidential material; the Operator is responsible for its own logging hygiene.
+
+## 11. Anti-abuse and integrity
+
+The Operator agrees not to:
+
+1. proxy, multiplex, or otherwise share access to a single Vendor account with multiple unrelated downstream users in a manner that violates the Vendor ToS;
+2. circumvent or disable the F1 IRON RULE, the egress-host CI gate, the manifest's declared egress surface, or any other safety control shipped with the Connector;
+3. accept payments routed through the Connector in jurisdictions where the Operator is not licensed or otherwise legally permitted to operate;
+4. use the Connector to evade sanctions, AML controls, KYC obligations, or tax reporting;
+5. misrepresent the Connector's vendor relationships (see §2 and §6.8) to Operator's customers, regulators, or counterparties.
+
+A breach of this §11 is a material breach and is a basis for indemnity under §7.2.
+
+## 12. Mock and test mode
+
+The Connector ships with `__tests__/_mock` test doubles. They make no network calls and never interact with a real facilitator or chain. Mock mode is for development and CI only; it is not an authorization to bypass §6 in production traffic.
+
+## 13. Updates to this document
+
+Glide may update this document from time to time as part of OSS releases. The version of this document that governs the Operator's use is the version distributed in the Operator's installed copy of the package. Operators should re-read this document when upgrading.
+
+## 14. Severability
+
+If any provision of this document is held unenforceable, that provision will be modified to the minimum extent necessary to make it enforceable, and the remainder of this document will remain in full force.
+
+## 15. Acknowledgement
+
+By installing or running the Connector, the Operator acknowledges having read, understood, and accepted the terms of this document and the LICENSE. **If the Operator does not accept these terms, the Operator must not use the Connector.**
+
+---
+
+## Prior art and references
+
+- [x402 specification](https://x402.org)
+- [x402 reference facilitator (open source)](https://github.com/coinbase/x402)
+- [Glide LICENSE](../../../LICENSE) (MIT)
+- Companion document: [`COMPLIANCE.md`](./COMPLIANCE.md)
+
+
+# Compliance — `@repo/connectors-coinbase-x402`
+
+**Status:** Ready for counsel review. Not yet counsel-reviewed. This document is operator-facing engineering guidance, not legal advice. Read together with [`DISCLAIMER.md`](./DISCLAIMER.md); the definitions there control.
+
+## 30-second summary
+
+> The Connector is an MIT adapter. Glide is not regulated. The Operator is. Bring your own Coinbase contract or run your own facilitator. RPC-verify every settlement before persisting (F1 IRON RULE — §2). Run the §8 pre-deployment checklist before going live. Get qualified counsel for the §13 open questions.
+
+---
+
+This document tells the Operator what the Connector does, what it does not do, and what the Operator must do for the Connector to be deployed lawfully. The Connector is an MIT-licensed adapter to the x402 Payment Protocol. **Glide is not a money transmitter, not a bank, not a regulated payments business, and not a party to any settlement that occurs through the Connector.**
+
+## 1. Vendor and posture
+
+| Field                  | Value                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default Vendor         | Coinbase Developer Platform — hosted x402 facilitator at `x402.coinbase.com` (operated by Coinbase, Inc. and/or its affiliates).                        |
+| Vendor docs            | <https://docs.cdp.coinbase.com/>                                                                                                                        |
+| AML posture            | `vendor-screened` when the Operator routes through Coinbase's hosted facilitator. `operator-screened` when the Operator runs a Self-Hosted Facilitator. |
+| Vendor contract holder | The Operator. **Not Glide.**                                                                                                                            |
+| Connector license      | MIT (see project [`LICENSE`](../../../LICENSE)).                                                                                                        |
+| Glide regulatory role  | None. Glide is OSS. Glide does not custody, transmit, screen, or settle Operator funds.                                                                 |
+
+The Vendor URL is configurable via the `X402_FACILITATOR_URL` environment variable. The Connector has no hardcoded reliance on Coinbase; any RFC-compatible x402 facilitator (including a Self-Hosted Facilitator) can be substituted without code changes. See [`DISCLAIMER.md`](./DISCLAIMER.md) §3 for the Self-Hosted Facilitator Path.
+
+## 2. F1 IRON RULE — facilitator transaction IDs are NOT trusted
+
+This is the Connector's load-bearing money-safety rule. **It is non-negotiable.**
+
+A Facilitator's `/settle` response includes a `transaction` field. The Operator MUST treat that field as **untrusted, attacker-controlled input** and MUST NOT persist it, expose it to a customer, credit a balance, release goods, or otherwise act on it without first independently verifying the on-chain state.
+
+**Required RPC verification before persisting any settlement:**
+
+1. Fetch the transaction by hash from a trusted full node or RPC provider that the Operator controls (or with a contractual obligation that the Operator can enforce). Do **not** rely on the Facilitator to be that source of truth.
+2. Confirm the transaction is included in a block on the expected network (chain ID).
+3. Confirm `from`, `to`, asset (token contract), and amount match the Operator's `PaymentRequirements` — including the case where a transferWithAuthorization moves funds via `transferFromAuthorization` semantics.
+4. Confirm the transaction has reached the Operator's required finality threshold (e.g., for Base: depth + L1 batch confirmation as appropriate; for Solana: appropriate commitment level). Re-orgs and rollback windows are real on every chain.
+5. Only after (1)–(4) succeed, persist the on-chain hash as the canonical record.
+
+If any of (1)–(4) fail, the Operator must treat the settlement as **not occurred**, refuse to credit, and surface the discrepancy to the Operator's incident-response process.
+
+The reference implementation of this verification is in `apps/mcp` as the `serverFetchChainTx` dependency injected into the `x402.pay` MCP tool. Use it, fork it, or substitute equivalent logic — but do not skip it.
+
+> A Facilitator may lie. Treat the claim as a hint, not a fact.
+
+## 3. Data and residency
+
+The Connector sends the following fields to the configured Facilitator on `/verify` and `/settle`:
+
+- the EIP-712 `transferWithAuthorization` signature (or, for Solana, the signed transaction);
+- the `resource` URL the Payer is fetching;
+- the `network`, `asset`, and `amount`;
+- the Payee receiving address (the Glide-managed account address) and the Payer wallet address as embedded in the signed payload.
+
+The Connector does **not** send Glide-side end-user PII (name, email, government IDs, IP-derived geo, etc.) to the Facilitator. The Payer's wallet address and the Payee's receiving address are blockchain identifiers that are by their nature pseudonymous-public. Operators who wish to add fields to the request body for their own audit are responsible for the resulting privacy posture.
+
+When the Operator uses Coinbase's hosted facilitator, request payloads transit Coinbase-controlled infrastructure (US). When the Operator runs a Self-Hosted Facilitator, payloads transit the Operator's own infrastructure in whatever region the Operator deploys.
+
+## 4. AML, sanctions, and screening responsibilities
+
+### 4.1 Hosted-facilitator path
+
+When the Operator routes through `x402.coinbase.com`:
+
+- Coinbase performs its own sanctions screening (OFAC SDN, EU, UN, UK HMT, and other regimes Coinbase elects) on the participating wallet addresses as part of the facilitator's verify+settle path. Glide does not duplicate that screening at the Connector layer because the Vendor is contractually positioned as the screening checkpoint.
+- The Operator nevertheless remains responsible for any sanctions / AML obligation imposed on the Operator as a regulated entity, including but not limited to: maintaining its own customer KYC, transaction-monitoring, SAR/STR filing, OFAC compliance program, and travel-rule data exchange where applicable. The fact that the Vendor screens does **not** discharge the Operator's own program where one is required.
+- The Operator is responsible for verifying that its Vendor ToS permits the Operator's specific use cases (e.g., custodial, non-custodial, B2B, B2C, embedded finance, agent-driven payments).
+
+### 4.2 Self-Hosted Facilitator path
+
+When the Operator runs a Self-Hosted Facilitator, the Operator inherits **every** AML / sanctions / fraud / abuse responsibility that the Vendor would otherwise have shouldered. At minimum the Operator must:
+
+- screen Payer and Payee wallet addresses against current OFAC SDN, EU consolidated, UN, UK HMT, and any other applicable lists before signing settlement;
+- log and retain settlement decisions for the period required by the Operator's regulator (typically 5 years for FinCEN-regulated MSBs);
+- maintain a sanctions and AML compliance program proportionate to the Operator's volume and risk;
+- be prepared to respond to law-enforcement and regulator information requests.
+
+A Self-Hosted Facilitator that lacks these controls is the Operator's compliance gap, not Glide's.
+
+### 4.3 Glide does not screen on the Operator's behalf
+
+The Connector layer cross-checks the on-chain transaction via RPC (the F1 IRON RULE) but does **not** perform sanctions screening. Operators who want belt-and-braces screening should integrate `packages/sanctions/` (Chainalysis adapter) at their persistence boundary, ahead of crediting any customer balance.
+
+## 5. Money-transmission posture
+
+Stablecoin payments through the Connector may, depending on the Operator's offering, jurisdiction, and counterparties, constitute "money transmission", "money services", "e-money", "payment services", or "virtual-asset services" under one or more of:
+
+- the U.S. Bank Secrecy Act and FinCEN MSB rules (31 CFR Chapter X);
+- U.S. state money-transmitter licensing regimes (the patchwork of 49+ state MTL regimes and the Money Transmission Modernization Act where adopted);
+- the EU Markets in Crypto-Assets Regulation (MiCAR), the Payment Services Directive (PSD2/PSD3), and the e-Money Directive;
+- the UK FCA's e-money / payment-services / cryptoasset registration regimes;
+- any equivalent regime in any jurisdiction where the Operator's customers are located.
+
+**Determining which of these apply to the Operator's offering, and obtaining the required registrations / licenses, is the Operator's exclusive responsibility.** Glide does not give regulatory advice and the Connector does not encode any opinion about whether a given Operator deployment requires a license. Operators must obtain qualified counsel.
+
+## 6. Tax reporting
+
+Stablecoin transfers may trigger tax reporting obligations including but not limited to:
+
+- IRS Form 1099-K (US, where the Operator is a third-party settlement organization);
+- IRS Form 1099-DA (US, for digital-asset broker reporting where applicable);
+- the OECD Crypto-Asset Reporting Framework (CARF);
+- the EU DAC8 directive;
+- VAT / GST treatment of any fees the Operator charges.
+
+The Connector does not produce tax reporting artifacts. Operators must build or contract their own tax-reporting layer.
+
+## 7. Privacy and data protection
+
+- The Connector itself does not log Payer or Payee identity beyond on-chain addresses, which are pseudonymous-public by design.
+- If the Operator joins on-chain addresses to its own customer records (KYC, name, email, etc.), the resulting dataset becomes "personal data" under GDPR / UK GDPR / CCPA / similar regimes. The Operator is the controller of that dataset and is responsible for: lawful basis, DPIAs where required, data-subject-rights handling, breach notification, and cross-border transfer mechanisms.
+- The Operator must publish its own privacy notice describing the Vendor / Facilitator data flows.
+- Glide makes no representation about Vendor data-protection compliance; the Operator must verify the Vendor's posture independently under the Vendor ToS and applicable DPA.
+
+## 8. Operator pre-deployment checklist
+
+Before pointing the Connector at a non-mock facilitator in production, the Operator should be able to answer **yes** to every item below.
+
+- [ ] I hold an active Coinbase Developer Platform agreement in my own legal name (hosted-facilitator path) **or** I operate my own x402 facilitator under my control (self-hosted path).
+- [ ] I have determined which money-transmission, MSB, MTL, e-money, payment-services, or virtual-asset registrations / licenses apply to my offering, and I hold them.
+- [ ] I have a documented sanctions / AML compliance program proportionate to my volume and risk; if I'm running self-hosted, that program covers Payer and Payee wallet screening at the facilitator layer.
+- [ ] I have implemented the F1 IRON RULE: every settlement is RPC-verified before persistence; I do not rely on the Facilitator's claimed `transaction` ID.
+- [ ] I have a customer-facing terms of service, privacy notice, and risk disclosure that accurately describes the role of the Vendor (or my Self-Hosted Facilitator) and that does not misrepresent Glide as a party.
+- [ ] I have a tax-reporting plan that covers 1099-K / 1099-DA / CARF / DAC8 / VAT as applicable.
+- [ ] I have an incident-response plan for the case where the Vendor terminates my account, suspends the facilitator, or returns malicious / inconsistent data.
+- [ ] I have read [`DISCLAIMER.md`](./DISCLAIMER.md) §6 (Operator obligations) and §7 (risk allocation) and accept them.
+
+## 9. Jurisdiction and availability
+
+The Connector source is globally available under MIT. **Glide does not represent that the Connector may be lawfully run from, or used to serve customers in, any particular jurisdiction.** Practical constraints the Operator should expect:
+
+- The Coinbase Developer Platform is available only in the jurisdictions Coinbase elects, on the terms Coinbase elects.
+- Stablecoin payment services are restricted, conditional, or prohibited in many jurisdictions.
+- US Federal sanctions (OFAC) and equivalent regimes (EU, UK, UN) prohibit transactions with sanctioned wallet addresses, persons, and jurisdictions; this restricts the Operator's customer base regardless of which facilitator path is chosen.
+
+**Do not accept payments in jurisdictions where you are not licensed or otherwise legally permitted to operate.** This is also restated as a covenant in [`DISCLAIMER.md`](./DISCLAIMER.md) §6.7 and §11.3.
+
+## 10. Mock and test mode
+
+The Connector exposes `FacilitatorClient` as an interface and ships test doubles in `src/__tests__/_mock/`. In tests and dev environments, pass a mock implementation to `handleX402Request` to exercise the receiver flow without ever reaching a Vendor or chain. Mock mode is for development and CI only and is not a substitute for any real-world compliance posture.
+
+## 11. Egress surface
+
+The Connector's manifest declares the following egress hosts:
+
+- `api.cdp.coinbase.com` — Coinbase Developer Platform auth and key APIs.
+- `x402.coinbase.com` — Coinbase-hosted x402 facilitator.
+- `facilitator.x402.io` — fallback / community-hosted facilitator.
+
+Plus any host the Operator configures via `X402_FACILITATOR_URL`. Glide's egress-host CI gate enforces that no other host is reached at runtime; Operators must not disable that gate.
+
+## 12. Vendor-termination playbook
+
+If the Vendor (Coinbase) suspends or terminates the Operator's account:
+
+1. Immediately stop routing live traffic at the Vendor's facilitator URL. Set `X402_FACILITATOR_URL` to a working endpoint or take the integration offline.
+2. The Operator must continue to honor any on-chain transactions that have already settled and been RPC-verified, regardless of Vendor termination.
+3. The Self-Hosted Facilitator Path remains available as a fallback. Standing it up takes operational and compliance work; do not assume same-day cutover.
+4. Communicate the change to customers per the Operator's customer terms.
+5. Document the cause for any audit or successor regulator review.
+
+Termination of the Vendor relationship does not terminate the Operator's regulatory or customer-contract obligations, and does not end the survival provisions in [`DISCLAIMER.md`](./DISCLAIMER.md) §8.3.
+
+## 13. Open questions for counsel review
+
+Items the operator's counsel should confirm before the Operator launches:
+
+- Does the Operator's specific use case (custodial vs. non-custodial; consumer vs. business; agent-driven vs. human-driven) require a state MTL, federal FinCEN MSB registration, MiCAR CASP authorization, FCA cryptoasset registration, or equivalent in each Operator jurisdiction?
+- Does the Vendor ToS, as currently in force, permit the Operator's specific architecture (e.g., agentic payments, machine-to-machine, multi-tenant, embedded finance)?
+- What sanctions-screening obligations attach to the Operator independently of the Vendor's screening?
+- What tax-reporting forms must the Operator file in each jurisdiction?
+- What customer disclosures (TILA / Regulation Z / Reg E / FCA / EU consumer-credit / e-money disclosures) must the Operator surface in its customer-facing UI?
+
+These questions are out of scope for the Connector and out of scope for Glide.
+
+---
+
+**Companion document:** [`DISCLAIMER.md`](./DISCLAIMER.md) — vendor relationship, license posture, warranty disclaimer, risk allocation, dispute resolution, anti-abuse covenants.
+

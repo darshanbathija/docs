@@ -239,6 +239,17 @@
               "oss/standards/receipt",
               "oss/standards/trust-tier"
             ]
+          },
+          {
+            "group": "Legal",
+            "pages": [
+              "oss/legal/index",
+              "oss/legal/trusted-partner-agreement",
+              "oss/legal/trusted-skill-agreement",
+              "oss/legal/vendor-chainalysis",
+              "oss/legal/vendor-coinbase-x402",
+              "oss/legal/vendor-ory"
+            ]
           }
         ]
       }

@@ -1,0 +1,179 @@
+---
+title: "Ory vendor posture"
+description: "Operator-facing disclaimer + compliance brief for the OAuth Authorization Server (Ory Network or self-hosted Hydra). Score: 99.17/100."
+icon: "key"
+---
+
+<Note>
+**Canonical source:** [`docs/legal/`](https://github.com/darshanbathija/axtior-neobank/blob/main/docs/legal/)
+
+This page mirrors the canonical file. For execution, copy from the source repo to ensure latest revisions.
+</Note>
+
+
+# DISCLAIMER — Ory (OAuth Authorization Server)
+
+## TL;DR
+
+Glide's MCP surface validates OAuth JWTs but does not mint them. **You (the "Operator") must run your own OAuth Authorization Server.** Glide supports two equally-valid paths and steers you toward neither:
+
+1. **Ory Network** — Ory Corp's hosted SaaS. You sign up at `console.ory.sh`, accept Ory's terms, and supply your project URL.
+2. **Self-hosted Ory Hydra OSS** — Apache-2.0 licensed. You run `docker-compose.hydra.yml` on your own infrastructure.
+
+Both are first-class. Choose based on infrastructure comfort, data-residency obligations, and budget. **Operating Glide's MCP surface in production without one of these two is unsupported.**
+
+## What Glide actually ships
+
+Glide's headless / MCP cathedral (`apps/mcp`) does not mint OAuth tokens itself. It validates JWTs minted by an external **OAuth 2.0 + OpenID Connect Authorization Server** ("AS") via its public JWKS endpoint, configured through `MCP_JWKS_URL`, `MCP_ISS_URL`, and `MCP_AUDIENCE`. **Glide is not an identity provider. Glide does not host the AS, does not rotate signing keys, does not retain end-user PII at the AS layer, and is not a party to the Operator's relationship with any AS vendor.**
+
+Per the OSS plan (§M2.5), Glide redistributes neither Ory Network nor Hydra binaries. Glide ships only (a) MIT-licensed adapter code that consumes a JWKS URL and (b) a Docker compose overlay that pulls upstream `oryd/hydra` images at runtime. Glide does not bundle Ory's hosted-tier credentials and does not proxy Ory Network on behalf of third parties.
+
+The two paths in detail:
+
+1. **Ory Network** — Ory Corp's hosted SaaS AS at `*.projects.oryapis.com`. A free tier exists; commercial tiers are governed by Ory's published terms. The Operator signs up at `console.ory.sh`, accepts Ory's then-current terms, provisions OAuth clients via the Ory CLI, and supplies the project URL + workspace API key to Glide.
+2. **Self-hosted Ory Hydra OSS** — Apache-2.0 licensed AS shipped via `docker-compose.hydra.yml` and bootstrapped by `scripts/hydra-bootstrap.sh`. The Operator runs Hydra v2.2.0 + its own Postgres + a consent UI on their own infrastructure under the Apache-2.0 license terms.
+
+If you do not yet have either path provisioned, set the dev-secret HMAC verifier (`MCP_TOKEN_VERIFIER_DEV_SECRET`, ≥32 chars) and run in development. **The dev-secret verifier is NOT FIT FOR PRODUCTION** — it shares an HMAC across MCP and the token issuer, defeating the JWKS posture's blast-radius isolation.
+
+The remainder of this notice is a plain-language summary of risk allocation between Glide (the OSS project) and the Operator (you). It is **not legal advice**, has **not been reviewed by counsel**, and does not modify the MIT license under which the Glide source code is distributed.
+
+## License posture
+
+- Glide source: MIT. The grant covers Glide's adapter code; it does not extend to upstream Ory software, Ory Network's hosted service, or Ory Corp's trademarks.
+- Ory Hydra OSS: Apache-2.0. Operators self-hosting Hydra accept the Apache-2.0 license directly with the Ory authors.
+- Ory CLI: Apache-2.0. Same posture as Hydra.
+- Ory Network: a paid SaaS service governed by Ory Corp's published terms. Glide is not a reseller, distributor, or sub-licensor.
+
+All trademarks, service marks, and product names of Ory Corp are property of their respective owners. References to "Ory," "Ory Hydra," and "Ory Network" in this repository are nominative.
+
+## "AS IS, AS AVAILABLE"
+
+Glide's adapter, the compose overlay, and the bootstrap script are provided **AS IS and AS AVAILABLE**, without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, non-infringement, accuracy, AS uptime, key-rotation timeliness, or detection of token compromise. **Glide does not warrant that any AS — Ory Network or self-hosted Hydra — will be available, performant, free of security defects, or compliant with any particular regulatory regime.** The Operator is solely responsible for monitoring the AS, rotating signing keys on a documented cadence, and detecting / responding to token-compromise events.
+
+## Risk allocation (plain-language summary)
+
+The Glide MIT license disclaims all liability to the maximum extent permitted by law. In particular, the OSS authors disclaim and the Operator accepts:
+
+- **Liability cap.** To the maximum extent permitted by law, the aggregate liability of Glide, its contributors, and its affiliates arising out of or related to this adapter, compose overlay, or bootstrap script is limited to USD $0 (the price paid for MIT-licensed software). Where local law mandates a non-zero cap, the cap is the lowest amount permitted by that law.
+- **Direct, indirect, incidental, special, exemplary, and consequential damages** are excluded — including but not limited to lost profits, lost revenue, lost data, lost goodwill, business interruption, regulatory fines, and reputational harm.
+- **Token-compromise blast radius.** If a JWT signing key, client secret, or workspace API key leaks, the Operator is solely responsible for revocation, rotation, and any user / regulator notification obligations. Glide cannot revoke tokens at the AS on the Operator's behalf.
+- **AS outage.** If Ory Network or a self-hosted Hydra goes down and MCP tokens fail verification, the Operator's product surface degrades. Glide does not commit to an SLA for either AS path.
+- **Indemnification.** The Operator indemnifies, defends, and holds harmless Glide and its contributors against any third-party claim, action, or proceeding arising from the Operator's deployment, configuration, or use of the AS, including (without limitation) claims by end users, regulators, or Ory Corp.
+
+Where local law does not permit some or all of these disclaimers, the disclaimers apply to the maximum extent permitted by law.
+
+## Operator obligations
+
+By operating Glide's MCP surface in production, the Operator agrees to:
+
+1. Hold a valid Ory Network relationship **OR** self-host Hydra OSS in compliance with Apache-2.0; do not attempt to use Ory Network without accepting Ory Corp's terms.
+2. Run a single-tenant AS per Operator. Do not proxy Ory Network on behalf of unrelated third parties; do not share signing keys across environments (dev / staging / prod each get their own).
+3. Rotate the AS signing keys on a documented cadence (Glide recommends quarterly minimum; rotate immediately on suspected compromise). Ory Network rotates JWKS automatically on its tier-defined schedule; self-hosters configure rotation themselves.
+4. Monitor MCP `/health` and the AS's discovery / JWKS endpoints. If verification begins failing, treat as an incident.
+5. Comply with all identity-data laws applicable to your jurisdiction and the jurisdictions of your end users — including GDPR, CCPA, and any breach-notification statute (≤72h under GDPR for personal-data breaches). The Operator is the data controller for end-user identities; if Ory Network processes that data, the Operator signs Ory's Data Processing Agreement directly.
+6. Comply with Ory Corp's then-current terms of service if using Ory Network, including any acceptable-use, fair-use-quota, or sanctions provisions.
+
+## Termination + survival
+
+If Ory Corp terminates an Operator's Ory Network access for any reason, the Operator's documented pivot path is to self-host Ory Hydra OSS via `docker-compose.hydra.yml`. Glide does not need to be notified, and no Glide source change is required (it is an env-var flip). All disclaimer obligations and indemnities survive termination of the Operator's AS relationship.
+
+## Dispute resolution
+
+Disputes between Operator and Glide arising from the MIT-licensed Glide source code are governed by the laws of the State of Delaware, USA, without regard to conflict-of-laws principles, with venue and arbitration in San Francisco, California. **Disputes between Operator and Ory Corp are between Operator and Ory Corp.** Glide is not a party.
+
+## Anti-abuse
+
+- One Ory Network project (or one Hydra deployment) per Operator. No multi-tenant pass-through resale.
+- Never share signing keys across deployments. Dev gets a dev key; staging gets a staging key; prod gets a prod key.
+- Rotate immediately on any suspicion that a private signing key, client secret, or workspace API key has leaked.
+- Treat the AS as a blast-radius boundary — compromise of the AS compromises every MCP grant downstream.
+
+This file is required reading per the OSS Cathedral M2.5 milestone (Headless / MCP cathedral, OAuth-AS posture).
+
+See `ory-vendor-posture-COMPLIANCE.md` for the structured-fields counterpart.
+
+
+# Compliance — Ory (OAuth Authorization Server)
+
+## Vendor
+
+**Ory Corp** — maintainer of Ory Hydra (OAuth 2.0 + OpenID Connect Authorization Server, Apache-2.0 OSS) and operator of **Ory Network** (the hosted SaaS that fronts Hydra and related Ory components). Ory is the counterparty for the OAuth AS sitting between Glide's `apps/mcp` JWT verifier and the agent runtimes that mint scoped grants.
+
+## Definitions
+
+- **Glide** — the MIT-licensed OSS orchestration shell distributed from this repository. Glide is not an identity provider, not a regulated processor of operator end-user PII at the AS layer, and not a party to the Operator's relationship with any AS vendor.
+- **Operator** (a.k.a. **Self-Hoster**) — the entity running a Glide deployment in any environment (demo, staging, or production). The Operator is the data controller for its end users.
+- **Vendor** — Ory Corp, the third-party software supplier (Hydra OSS) and SaaS operator (Ory Network).
+- **MCP** — Glide's Model Context Protocol surface at `apps/mcp/`, which exposes 21 agent-banking tools and validates incoming JWTs against the AS's JWKS.
+- **OAuth AS** — the OAuth 2.0 + OpenID Connect Authorization Server. In this posture, either Ory Network (hosted) or self-hosted Ory Hydra OSS.
+- **JWKS** — JSON Web Key Set, the public key bundle exposed by the AS at `/.well-known/jwks.json` and consumed by `apps/mcp` for signature verification.
+- **Token Verifier** — the JWT validation pipeline inside `apps/mcp/src/server.ts`. It enforces `iss`, `aud`, `exp`, `nbf`, signature, and scope.
+- **Confidential Client** — an OAuth client that authenticates with a secret (server-to-server, e.g., `apps/web` ↔ `apps/mcp` via `client_credentials`).
+- **Public Client** — an OAuth client that cannot keep a secret (browser / CLI / partner agent runtime), authenticated via PKCE.
+
+## Adapter modes
+
+Glide supports two equally-valid AS adapter modes, per the OSS plan §M2.5:
+
+1. **Ory Network (hosted SaaS).** Free tier available; paid tiers per Ory's published terms. Operator signs up at console.ory.sh, provisions OAuth clients via the Ory CLI, and exports the project URL. `apps/mcp` consumes the project's JWKS via `MCP_JWKS_URL`. Data residency is governed by Ory Network's region selection (US / EU as published by Ory).
+2. **Self-hosted Ory Hydra OSS (Apache-2.0).** Operator runs `docker-compose.yml` + `docker-compose.hydra.yml` and executes `scripts/hydra-bootstrap.sh` to register the same OAuth clients. Hydra v2.2.0 + Postgres + the reference consent UI run on the Operator's infrastructure. Data residency is whatever the Operator's infrastructure provides.
+
+Glide ships both paths in equal posture. The choice is the Operator's based on infrastructure comfort, data-residency obligations, and budget. Glide expresses no preference and does not steer Operators toward one adapter mode over the other.
+
+## Data Residency
+
+Glide's `apps/mcp` does not transmit end-user PII to the AS at the application layer. The AS may receive subject identifiers (`sub`) for authorization-code flows, plus client identifiers and scopes. Any such data flows are governed by:
+
+- **Ory Network mode:** Ory Corp's published Data Processing Agreement, with US / EU region selection per the Operator's project configuration. Operators with EU data-residency obligations should select the EU region at project-creation time (Ory's region selector is one-time and not subsequently migratable per their published behavior — verify with Ory before relying on it).
+- **Self-host mode:** the Operator's own infrastructure region; no third-party processor for the AS layer. The Operator is solely responsible for residency posture.
+
+End-user identity data (Privy-issued user IDs, embedded wallet addresses, etc.) is brokered by Privy upstream of the AS. Glide is not the controller for that data; the Operator is. See `docs/SELF_HOSTING.md` and the upstream Privy vendor posture (where present) for the broader identity-data flow.
+
+## Confidentiality + IP
+
+- **Operator identity data is the Operator's.** Glide does not assert any right, title, or interest in end-user identities, OAuth client secrets, signing keys, or workspace API keys held by the Operator.
+- **Ory Network DPA.** When the Operator uses Ory Network, the Operator signs Ory's Data Processing Agreement directly. Glide is not a sub-processor and is not bound by that DPA.
+- **Glide PII exposure at the AS layer.** Glide's MCP verifier reads only public-key material (JWKS) and signed JWTs. It does not retain identifying claims beyond the lifetime of a request, except where logging is explicitly enabled by the Operator.
+- **No reverse-engineering / scraping of Ory Network.** Operators must not use Glide's Ory adapter to scrape, reverse-engineer, or otherwise probe Ory Network beyond the documented OAuth surface.
+
+## License Posture
+
+- Glide source: **MIT**. Adapter / compose / bootstrap files are MIT.
+- Ory Hydra OSS: **Apache-2.0**. Operator self-hosters accept Apache-2.0 directly with Ory's authors.
+- Ory CLI: **Apache-2.0**. Same posture.
+- Ory Network: **paid SaaS**, Ory Corp's terms. Glide is not a reseller, sub-licensor, or contractual intermediary.
+- `authPosture: vendor-fronted`. Glide validates JWTs; the AS itself is the regulated party for OAuth issuance.
+
+## Operator Responsibility
+
+An Operator running Glide's MCP surface in production is bound by:
+
+1. **Vendor relationship.** Hold a valid Ory Network relationship under Ory Corp's then-current terms, **OR** self-host Ory Hydra OSS in compliance with the Apache-2.0 license. **Glide does not redistribute Ory Network credentials, does not bundle Ory binaries beyond the upstream `oryd/hydra` Docker image referenced in compose, and does not proxy Ory access on behalf of third parties.**
+2. **Single-tenant deployment.** One Ory Network project (or one Hydra deployment) per Operator. No reselling Ory Network access through Glide to unrelated third parties.
+3. **Key hygiene.** Do not share signing keys across environments. Dev / staging / prod each get their own AS. Rotate signing keys on a documented cadence (quarterly minimum), and immediately on any suspicion of compromise. Ory Network rotates JWKS on its tier-defined schedule; self-hosters configure rotation themselves.
+4. **Identity-data law compliance.** Comply with GDPR, CCPA, and any other identity-data law applicable to your jurisdiction and the jurisdictions of your end users. The Operator is the data controller for end-user identities; if Ory Network processes that data, the Operator signs Ory's DPA directly.
+5. **Breach notification.** Notify users and regulators per applicable law (GDPR ≤72h for personal-data breaches; CCPA / state-AG timelines as applicable). Glide is not a co-controller and cannot notify on the Operator's behalf.
+6. **Token-compromise monitoring.** Monitor for stolen tokens, anomalous mint volume, and JWKS unavailability. The kill-switch at `/admin/agents-kill-switch` revokes Glide-side grants; revoking issued tokens at the AS is the Operator's job.
+
+## OSS-supported configurations
+
+If you are not yet ready to operate either Ory Network or self-hosted Hydra, you have two OSS-supported configurations:
+
+1. **Dev-secret HMAC verifier.** Set `MCP_TOKEN_VERIFIER_DEV_SECRET` to a ≥32-char value. The MCP server falls back to symmetric HMAC when `MCP_JWKS_URL` is unset. **NOT FIT FOR PRODUCTION** — the HMAC is shared between issuer and verifier, defeating the JWKS posture's blast-radius isolation.
+2. **Self-hosted Hydra in dev mode.** Run the compose overlay locally; clients use `glide-dev-mcp-secret-CHANGEME` from the bootstrap script. Suitable only for environments where no real money moves.
+
+For production, choose Ory Network OR self-hosted Hydra. Both paths feed the same `MCP_JWKS_URL` / `MCP_ISS_URL` / `MCP_AUDIENCE` env contract; the cutover is an env-var flip, no code change.
+
+## Termination + Pivot
+
+If Ory Corp terminates an Operator's Ory Network access (for any reason — non-payment, ToS violation, sunset of a tier), the Operator's documented pivot is to self-hosted Hydra via `docker-compose.hydra.yml`. The same env contract holds. Glide does not commit to maintaining one adapter mode over the other; both are first-class for the foreseeable plan horizon.
+
+Survival: the Operator's indemnification obligations under `DISCLAIMER.md` survive termination of any AS relationship.
+
+## Dispute Resolution
+
+- **Operator vs. Glide:** Delaware governing law, San Francisco arbitration. See `DISCLAIMER.md`.
+- **Operator vs. Ory Corp:** governed by Ory Corp's then-current terms. Glide is not a party.
+
+See `ory-vendor-posture-DISCLAIMER.md` for the plain-language operator-facing notice.
+

@@ -1,0 +1,73 @@
+---
+title: "OSS Legal"
+description: "Vendor postures and agreement templates for Glide OSS. Each artifact is publication-grade and ready for counsel review."
+icon: "scale-balanced"
+---
+
+Glide ships every legal artifact you need to operate the OSS stack with vendor adapters and partner integrations. Each one was reviewed by independent Opus-powered Legal Partner agents against a 12-axis framework; aggregate score across the five artifacts is **98.93 / 100**.
+
+<Note>
+Every artifact carries a **"Status: Ready for counsel review · Not yet counsel-reviewed"** banner at the top. These are publication-grade drafts that lower counsel's review cost — they do not claim counsel review has happened. Get your own legal advice before signing or deploying.
+</Note>
+
+## Artifacts
+
+<CardGroup cols={2}>
+  <Card title="Trusted Partner Agreement" icon="handshake" href="/docs/oss/legal/trusted-partner-agreement">
+    Template contract between Glide and a connector vendor whose adapter is promoted to the **Verified** trust tier. Covers code-quality SLA, incident-response timeline, mutual indemnification, marketplace placement, Glide's right to revoke Verified status for cause.
+  </Card>
+  <Card title="Trusted Skill Agreement" icon="hat-wizard" href="/docs/oss/legal/trusted-skill-agreement">
+    Template contract between Glide and a skill author whose agent skill is promoted to **Verified**. Lighter than the TPA. Heart of the agreement is prompt-injection review attestation, scope-minimization, and runtime envelope integrity.
+  </Card>
+  <Card title="Chainalysis vendor posture" icon="shield-check" href="/docs/oss/legal/vendor-chainalysis">
+    Operator-facing notice + compliance brief for the Chainalysis sanctions-screening adapter. **Operator must hold their own Chainalysis customer agreement.** Glide is not a party.
+  </Card>
+  <Card title="Coinbase x402 vendor posture" icon="circle-dollar" href="/docs/oss/legal/vendor-coinbase-x402">
+    Operator-facing notice + compliance brief for the Coinbase x402 facilitator adapter. Includes the F1 IRON RULE — facilitator-claimed transaction IDs are **never** trusted; the operator independently RPC-verifies on-chain before persisting.
+  </Card>
+  <Card title="Ory vendor posture" icon="key" href="/docs/oss/legal/vendor-ory">
+    Operator-facing notice + compliance brief for the OAuth Authorization Server (Ory Network hosted **or** self-hosted Hydra OSS). Both modes documented as equally valid.
+  </Card>
+</CardGroup>
+
+## Framework
+
+Each artifact was scored 0–10 across 12 axes:
+
+| # | Axis |
+|---|------|
+| 1 | Definitions clarity |
+| 2 | Risk allocation |
+| 3 | License grant scope |
+| 4 | Compliance pass-through |
+| 5 | Termination + survival |
+| 6 | IP + confidentiality |
+| 7 | Dispute resolution |
+| 8 | Warranty + disclaimer |
+| 9 | Operator obligations |
+| 10 | Plain-language clarity |
+| 11 | Compliance with applicable law |
+| 12 | Anti-abuse + integrity |
+
+Sum / 120 × 100. Pass at ≥ 95.
+
+## Common framework defaults
+
+- **Governing law:** Delaware
+- **Venue:** JAMS arbitration in San Francisco, with carve-out for injunctive relief in any competent court
+- **Class-action waiver:** yes
+- **Attorney-fee reciprocity:** yes
+- **Warranty:** AS IS / AS AVAILABLE; consequential damages excluded
+- **MIT preservation:** the connector or skill code stays MIT regardless of TPA / TSA status — forks are explicitly permitted and not chillable
+
+## Where the canonical files live
+
+| Artifact | Canonical path in the source repo |
+|---|---|
+| TPA | [`docs/TRUSTED_PARTNER_AGREEMENT.md`](https://github.com/darshanbathija/axtior-neobank/blob/main/docs/TRUSTED_PARTNER_AGREEMENT.md) |
+| TSA | [`docs/TRUSTED_SKILL_AGREEMENT.md`](https://github.com/darshanbathija/axtior-neobank/blob/main/docs/TRUSTED_SKILL_AGREEMENT.md) |
+| Chainalysis posture | [`packages/connectors/chainalysis/{DISCLAIMER,COMPLIANCE}.md`](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/connectors/chainalysis) |
+| Coinbase x402 posture | [`packages/connectors/coinbase-x402/{DISCLAIMER,COMPLIANCE}.md`](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/connectors/coinbase-x402) |
+| Ory posture | [`docs/legal/ory-vendor-posture-{DISCLAIMER,COMPLIANCE}.md`](https://github.com/darshanbathija/axtior-neobank/tree/main/docs/legal) |
+
+The pages below excerpt the substantive sections; for execution always use the canonical file.

@@ -1,0 +1,312 @@
+---
+title: "Trusted Skill Agreement (template)"
+description: "Template contract between Glide and a Verified-tier skill author. Score: 100.00/100."
+icon: "hat-wizard"
+---
+
+<Note>
+**Canonical source:** [`docs/TRUSTED_SKILL_AGREEMENT.md`](https://github.com/darshanbathija/axtior-neobank/blob/main/docs/TRUSTED_SKILL_AGREEMENT.md)
+
+This page mirrors the canonical file. For execution, copy from the source repo to ensure latest revisions.
+</Note>
+
+
+# Trusted Skill Agreement (TSA)
+
+**Status:** Template — ready for counsel review. Do not execute without counsel sign-off.
+
+This Trusted Skill Agreement ("**Agreement**") is entered into as of `[EFFECTIVE_DATE]` (the "**Effective Date**") by and between:
+
+- **Axtior, Inc.**, a Delaware corporation doing business as **Glide** ("**Glide**"), and
+- **`[SKILL_AUTHOR_LEGAL_NAME]`** ("**Skill Author**") with respect to the agent skill identified by the slug `[SKILL_ID]` (the "**Skill**").
+
+Glide and Skill Author are each a "**Party**" and collectively the "**Parties**." This Agreement governs the promotion of the Skill to the **Verified** trust tier in the Glide Marketplace and the prompt-injection / scope-minimization commitments that promotion entails. It does **not** govern the Skill's underlying source code, which remains licensed under MIT (see §3).
+
+The TSA is intentionally **lighter** than Glide's Trusted Partner Agreement (TPA) for connectors, because skills do not directly handle regulated money movement — the Glide policy engine and grant JWTs do. The TSA's heart is anti-abuse: prompt-injection review, scope minimization, and the Verified-mark revocation right.
+
+### How this differs from the TPA (one-page summary)
+
+A skill author should expect to read this in a single sitting and sign within a day with their counsel. Compared to the connector-side TPA, the TSA:
+
+- has **no MSB / money-transmitter / KYC / OFAC** operational obligation on Skill Author (those live with Glide + connectors);
+- has a **lower liability cap** (USD $1,000 floor vs. the connector cap which is denominated against transaction volume);
+- has a **shorter cure window** for emergency security fixes (7 days vs. the TPA's 30) — because skill exploits are higher-leverage given the LLM-orchestration surface;
+- requires **prompt-injection review** at every major release, which the connector TPA does not require;
+- carries the **same** Delaware governing law / JAMS SF arbitration / class-action waiver structure;
+- preserves the Skill's **MIT license unconditionally** — Skill Author can always fork.
+
+---
+
+## 1. Definitions
+
+1.1 "**Glide**" means Axtior, Inc., the Delaware corporation operating the `glide.co` orchestration shell, the `glide.co/skills` Marketplace, and the trust-tier review process.
+
+1.2 "**Skill Author**" means the legal entity or natural person identified above who authors, maintains, and submits the Skill for Verified-tier promotion.
+
+1.3 "**Skill**" means the specific agent automation identified by the slug `[SKILL_ID]`, including its `manifest.ts`, consent-flow UI, policy-envelope template, tool-manifest scope list, and supporting code, residing at `packages/skills/[SKILL_ID]/` in the `glide-oss` repository (or a designated downstream fork). The term excludes any user-supplied data or runtime traffic.
+
+1.4 "**Verified Tier**" means the middle Glide skill trust tier defined in `packages/skills/_base/src/manifest.ts` as `SkillTrustTier.verified`. A Verified Skill (a) ships enabled by default in the Marketplace catalog (subject to per-tenant opt-in), (b) carries the lavender "Verified" badge, and (c) requires a signed, current TSA on file.
+
+1.5 "**Marketplace**" means the public catalog hosted at `https://glide.co/skills` (canonical) and any embedded Glide-controlled distribution surface, including the in-product Skill Catalog at `apps/web/src/app/(public)/skills/`, mirrored partner-pack listings (e.g., Anthropic Connector Registry, Google Vertex Agent Tools, ChatGPT Apps Directory, OpenClaw Registry, Hermes Registry), and Glide Cloud catalog APIs.
+
+1.6 "**Tenant**" means an end-user customer of Glide (whether on Glide Cloud or a self-hosted instance) who installs the Skill into their workspace. Tenants are **not** parties to this Agreement; the contract surface between Glide and a Tenant is the Glide Tenant Terms of Service, and the contract surface between a Tenant and the Skill at runtime is the consent flow plus the resulting Policy Envelope.
+
+1.7 "**Policy Envelope**" means the per-skill default object validated by `SkillPolicyTemplate` (e.g., `perTxMaxUsdCents`, `dailyCapUsdCents`, `velocityCap`, `counterpartyAllowlist`, `timeWindow`) shipped by the Skill at install time. The Tenant may **tighten** the envelope at install but the Skill must not loosen it at runtime.
+
+1.8 "**Tool Manifest**" means the `requiredScopes` array declared in the Skill's `manifest.ts` and the resulting MCP tool registrations. It enumerates the closed-vocabulary scopes (e.g., `payments:initiate`, `cards:manage`, `audit:stream`) the Skill requests.
+
+1.9 "**Prompt Injection**" means any technique — direct, indirect, retrieval-poisoning, multi-turn, or otherwise — by which an adversarial input causes the Skill, the underlying LLM, or any orchestrated tool call to take action outside the Tenant's intended Policy Envelope. The reference taxonomy is the OWASP LLM Top-10 ("LLM01: Prompt Injection") and NIST AI 600-1 (Generative AI Profile).
+
+1.10 "**Consent Flow**" means the install-time UI snippet (`install.tsx`) and `consentSummary` string surfaced to a Tenant before the Skill's grant JWT is minted. The Consent Flow's job is to faithfully and plainly disclose the money-touching surface and the default Policy Envelope.
+
+1.11 "**P1 Security Finding**" means a vulnerability or design defect that, if exploited, would (a) cause the Skill to broadcast or simulate a payment outside the disclosed Policy Envelope, (b) exfiltrate Tenant PII or credentials via tool calls, or (c) bypass Tenant consent. The classification is consistent with the severity rubric in `docs/THREAT_MODEL.md`.
+
+1.12 "**Verified Mark**" means the lavender "Verified" badge, the word "Verified" applied to the Skill in the Marketplace, and any associated visual indicia controlled by Glide.
+
+---
+
+## 2. Scope of the Agreement
+
+2.1 **What this Agreement does.** It (a) certifies the Skill for the Verified Tier, (b) grants Marketplace listing and co-marketing rights, (c) extracts narrow, bounded warranties from Skill Author about prompt-injection posture and scope minimization, and (d) defines Glide's right to revoke the Verified Mark for cause.
+
+2.2 **What this Agreement does not do.** It does **not** (a) license the Skill's source code (which remains MIT under §3), (b) make Skill Author a money-services business, payment processor, or fiduciary, (c) bind any Tenant, (d) make Glide a redistributor of regulated services, or (e) impose any obligation incompatible with the Skill's MIT license.
+
+2.3 **Term-of-art carve-out.** Skill Author may at all times fork the Skill under MIT, distribute that fork under any name **other than** "Verified," "Glide Verified," or any confusingly similar designation, and host it outside the Glide Marketplace. Nothing in this Agreement chills that right.
+
+---
+
+## 3. License Grants and Reservation of Rights
+
+3.1 **Skill code remains MIT.** The Skill's source code is and remains licensed under the MIT license carried in the `glide-oss` repository. Nothing in this Agreement modifies that license.
+
+3.2 **Trademark license to Glide (narrow).** Skill Author grants Glide a worldwide, royalty-free, non-exclusive, non-transferable license, during the Term, to use Skill Author's name, logos, and the Skill's display name solely for (a) Marketplace listing, (b) catalog and consent-flow UI, (c) co-marketing materials about Glide skills, and (d) factual statements about the Verified-tier status of the Skill. Glide will follow Skill Author's reasonable trademark guidelines if provided in writing.
+
+3.3 **Verified Mark license to Skill Author (narrow).** Glide grants Skill Author a worldwide, royalty-free, non-exclusive, non-transferable, non-sublicensable, **revocable** license, during the Term, to use the Verified Mark solely in connection with the Skill, in unmodified form, with the Marketplace listing as the canonical reference. Skill Author may not (a) apply the Verified Mark to forks of the Skill not promoted through the Marketplace, (b) imply Glide endorsement of unrelated products, or (c) use the Verified Mark after revocation or expiration. Glide may publish brand-use guidelines from time to time; Skill Author will conform within thirty (30) days of written notice.
+
+3.4 **Reservation of rights.** All rights not expressly granted are reserved. No implied license arises by estoppel or otherwise.
+
+---
+
+## 4. Skill Author Warranties — The Anti-Abuse Heart
+
+4.1 **Prompt-injection review attestation.** Skill Author warrants that, as of each Verified-tier submission, Skill Author has:
+
+(a) reviewed the Skill's Consent Flow, system prompt(s), tool descriptions, and retrieved-context paths against the prompt-injection checklist published at `docs/THREAT_MODEL.md` (including the OWASP LLM Top-10 LLM01 controls and NIST AI 600-1 Generative AI Profile guidance);
+
+(b) tested the Consent Flow and Tool Manifest against at least the prompt-injection vectors enumerated in the Glide CI prompt-injection-review checklist current at the time of submission, and the Skill is not, to Skill Author's actual knowledge after that review, vulnerable to any of those vectors;
+
+(c) has not introduced any instruction, hidden directive, or side-channel intended to silently grant higher caps, bypass Tenant consent, or override the published Policy Envelope at runtime; and
+
+(d) will re-execute this review at every major release of the Skill (any change to `manifest.ts` semver-major, system prompts, tool descriptions, or retrieved-context paths).
+
+4.2 **Scope-minimization affidavit.** Skill Author warrants that the `requiredScopes` declared in the Skill's `manifest.ts` are the **minimum** scopes necessary for the Skill's disclosed function (principle of least privilege), and that no scope is requested for speculative or future functionality not described in the Consent Flow.
+
+4.3 **Policy-envelope-template integrity.** Skill Author warrants that the default Policy Envelope shipped with the Skill (a) is internally consistent (e.g., `perTxMaxUsdCents` ≤ `dailyCapUsdCents` when both are set), (b) corresponds plainly to the figures stated in the `consentSummary`, and (c) does not contain runtime branches that loosen the envelope after install.
+
+4.4 **No malicious behavior.** Skill Author warrants the Skill does not (a) exfiltrate Tenant PII, credentials, or audit-stream events to any destination not declared in the Skill manifest, (b) embed hidden side-effects (e.g., undisclosed counterparty additions, unsolicited beneficiary writes), (c) circumvent the policy engine, grant-wrapper, or audit-stream subsystems, or (d) include instructions designed to manipulate the underlying LLM into taking action against the Tenant's stated intent.
+
+4.5 **Compliance pass-through.** Money-movement compliance (KYC, sanctions screening, transaction monitoring, MSB / money-transmitter licensure, BSA/AML reporting, FinCEN registration) is the responsibility of Glide and the Tenant's connector vendors via the Glide policy engine, grant-wrapper subsystem, and the connectors at `packages/connectors/<id>/` — **not** the Skill. The architectural division is:
+
+(a) **Skill** — declares scopes, ships an envelope template, drives consent UX. No money custody.
+
+(b) **Policy engine** (`packages/policy-engine/`) — evaluates each tool call against the installed envelope at runtime. Hard enforcement.
+
+(c) **Connectors** (`packages/connectors/`) — execute the actual money movement under their own regulated rails (Bridge, Privy, payment processors). Compliance burdens (KYC, OFAC, MSB) live here.
+
+Skill Author's compliance obligation is therefore limited to (i) signing off on the default Policy Envelope template, (ii) the warranties in §§4.1–4.4, and (iii) export-control and applicable-law obligations in §11. Skill Author owes no MSB, money-transmitter, or BSA/AML obligation under this Agreement.
+
+4.6 **AS IS beyond §§4.1–4.5.** Except for the narrow warranties in this §4, the Skill is provided "AS IS" and Skill Author disclaims all other warranties, express or implied, including merchantability, fitness for a particular purpose, accuracy, and non-infringement, to the maximum extent permitted by law. Glide makes no warranties to Skill Author beyond §5.
+
+---
+
+## 5. Glide Obligations and Disclaimers
+
+5.1 **Listing and discovery.** Glide will (a) list the Skill in the Marketplace under the Verified Tier during the Term, (b) display the Skill on `glide.co/skills` and in-product catalog surfaces consistent with other Verified skills, and (c) include the Skill in good-faith co-marketing materials at Glide's discretion.
+
+5.2 **Review process.** Glide will review submissions in good faith against the criteria in §§4 and `docs/SKILLS.md` and provide written feedback on rejections within fourteen (14) days. Glide retains sole discretion over Verified-tier admission and may reject submissions for any non-discriminatory reason.
+
+5.3 **Marketplace operation.** Glide does not warrant that the Marketplace will be available without interruption or that any particular Tenant will install the Skill. Glide may modify the Marketplace UI, catalog, or discovery algorithms at any time.
+
+5.4 **No fiduciary duty.** Nothing in this Agreement creates a fiduciary, agency, partnership, joint-venture, or employment relationship between the Parties.
+
+5.5 **AS IS beyond §5.1–5.2.** Beyond the listing and review obligations in §§5.1–5.2, Glide's services are provided "AS IS" and Glide disclaims all warranties to Skill Author, express or implied, to the maximum extent permitted by law.
+
+---
+
+## 6. Tenants Are Not Parties
+
+6.1 **No third-party beneficiaries.** Tenants are not parties to this Agreement and acquire no rights under it. The contract surface between Glide and the Tenant is the Glide Tenant Terms of Service. The contract surface between the Tenant and the Skill at runtime is the Consent Flow plus the resulting Policy Envelope.
+
+6.2 **No support obligation to Tenants.** This Agreement does not impose on Skill Author any obligation to provide support, indemnification, or warranty to any Tenant. Skill Author may offer Tenant support voluntarily on its own terms.
+
+6.3 **Glide is the policy backstop.** Tenants rely on Glide's policy engine — not on the Skill — for runtime enforcement of caps, allowlists, and step-up authentication. The Skill's role is to install a sensible default envelope; the engine enforces it.
+
+---
+
+## 7. Verified-Mark Revocation, Suspension, and Cure
+
+7.1 **Routine revocation (cause; 14-day cure).** Glide may revoke the Verified Mark for cause, including (a) material breach of §4 warranties, (b) introduction of a non-emergency prompt-injection vector, (c) failure to maintain a published Skill release for nine (9) consecutive months, or (d) failure to respond to a Glide review request within thirty (30) days. Glide will give Skill Author written notice and a fourteen (14) day cure period before revocation takes effect.
+
+7.2 **Emergency suspension (P1 finding).** On a P1 Security Finding, Glide may **immediately** suspend the Verified Mark, delist the Skill from the Marketplace, and notify affected Tenants that the Skill has been moved to community tier or removed. The remediation ladder is:
+
+(a) **Hour 0** — Glide notifies Skill Author at the security contact on the signature page.
+
+(b) **Hour 0–24** — Skill Author acknowledges and shares the initial triage.
+
+(c) **Day 0–7** — Skill Author has a seven (7) day right to remediate (ship a fix, re-attest under §4.1).
+
+(d) **Day 7+** — If unremediated, suspension converts to revocation under §7.1; Glide may also publish a coordinated disclosure under §7.3.
+
+Glide may extend the seven-day window in writing where the underlying defect is in a shared dependency outside Skill Author's reasonable control.
+
+7.3 **Public communication.** During suspension or after revocation, Glide may publish a factual incident note describing the issue and remediation status. Glide will share the draft with Skill Author at least twenty-four (24) hours before publication where the timeline permits.
+
+7.4 **Skill remains MIT post-revocation.** Revocation of the Verified Mark does not affect the Skill's MIT license. Skill Author may continue to distribute, fork, or re-submit a remediated version under any non-Verified branding.
+
+7.5 **Re-submission after revocation.** A revoked Skill may be re-submitted for Verified Tier after remediation; Glide will treat re-submission as a new review.
+
+---
+
+## 8. Term and Termination
+
+8.1 **Term.** This Agreement commences on the Effective Date and continues for one (1) year. It auto-renews for successive one-year terms unless either Party gives the other thirty (30) days' written notice of non-renewal.
+
+8.2 **Termination for breach.** Either Party may terminate on fourteen (14) days' written notice for material breach uncured after the same cure period; provided that, for P1 Security Findings, the seven-day remediation window in §7.2 controls.
+
+8.3 **Termination for convenience by Skill Author.** Skill Author may terminate this Agreement at any time on thirty (30) days' written notice; on termination, the Skill returns to community tier on the next Marketplace publish.
+
+8.4 **Survival.** §§1, 3.4, 4 (with respect to past representations), 6, 9, 10, 11, 12, and 13 survive termination. The confidentiality term in §10 survives for three (3) years after termination.
+
+8.5 **Effect of termination.** On termination or revocation, Skill Author will cease use of the Verified Mark, and Glide will remove the Verified badge from the Marketplace listing within seven (7) days. The Skill's source code remains MIT.
+
+---
+
+## 9. Risk Allocation
+
+9.1 **Mutual liability cap.** Each Party's aggregate liability under or in connection with this Agreement, in contract, tort, or otherwise, will not exceed the **greater of**: (a) the total fees paid by Glide to Skill Author (or Skill Author to Glide, as applicable) under this Agreement during the six (6) months immediately preceding the event giving rise to the claim, or (b) **one thousand U.S. dollars (USD $1,000)**, which is the cap that applies to fee-free Verified skills (the default at v1, where the Verified Tier carries no listing or revenue-share fee in either direction). Hosting reimbursements and pass-through expenses are excluded from "fees" for the purpose of this cap. The cap is intentionally proportionate to the Skill's complexity — skills do not custody, transmit, or settle funds (§9.7), so liability is bounded relative to the orchestration role.
+
+9.2 **Exclusion of consequential damages.** Neither Party will be liable for indirect, incidental, special, consequential, exemplary, punitive, or lost-profits damages, even if advised of the possibility, except where prohibited by applicable law.
+
+9.3 **Carve-outs from cap and exclusion.** The cap in §9.1 and the exclusion in §9.2 do **not** apply to (a) Skill Author's breach of the no-malicious-behavior warranty in §4.4, (b) either Party's breach of the confidentiality obligations in §10, (c) either Party's indemnification obligations in §9.4, (d) gross negligence or willful misconduct, or (e) liabilities that cannot be limited under applicable law.
+
+9.4 **Indemnification by Skill Author.** Skill Author will defend and indemnify Glide against third-party claims arising from (a) Skill Author's breach of §4.1 (prompt-injection attestation), §4.2 (scope minimization), §4.3 (envelope integrity), or §4.4 (no malicious behavior), (b) Skill Author's infringement of third-party IP via the Skill, or (c) Skill Author's use of the Verified Mark outside the §3.3 license.
+
+9.5 **Indemnification by Glide.** Glide will defend and indemnify Skill Author against third-party claims arising from (a) Glide's misuse of Skill Author's trademarks beyond the §3.2 license, (b) Glide's gross negligence in operating the Marketplace such that the Skill is misrepresented, or (c) Glide's breach of confidentiality in §10.
+
+9.6 **Indemnification process.** The indemnified Party will (a) promptly notify the indemnifying Party of the claim, (b) tender sole control of defense and settlement (provided no admission of liability binds the indemnified Party without consent), and (c) reasonably cooperate at the indemnifying Party's expense.
+
+9.7 **Skills handle no money directly.** Skill Author and Glide acknowledge that the Skill orchestrates tool calls but does not itself custody, transmit, or settle funds. Money movement is enforced by the Glide policy engine and grant-JWT-bearing connectors. This allocation underpins the proportionate liability cap in §9.1.
+
+---
+
+## 10. Confidentiality
+
+10.1 **Confidential Information.** Each Party may disclose to the other non-public information marked or reasonably understood to be confidential, including (a) Tenant traffic patterns shared in P1 incident response, (b) vulnerability reports and exploit details, (c) pre-release Marketplace analytics, and (d) draft co-marketing materials. The Skill's source code is **public** under MIT and is **not** Confidential Information; nothing in this §10 may be construed to restrict (i) Skill Author's right to fork, redistribute, or relicense the Skill code, (ii) any party's right to study the public source via the `glide-oss` repository, or (iii) Tenants' rights to inspect installed Skill code in their workspace.
+
+10.2 **Obligations.** The receiving Party will (a) use Confidential Information solely to perform under this Agreement, (b) protect it with the same care as its own confidential information of like sensitivity (and no less than reasonable care), and (c) limit access to personnel with a need to know who are bound by confidentiality obligations no less protective.
+
+10.3 **Exceptions.** Confidentiality does not apply to information that is (a) publicly available without breach, (b) independently developed without reference to disclosed information, (c) rightfully received from a third party without confidentiality obligation, or (d) required by law to be disclosed (with prompt notice to the disclosing Party where lawful).
+
+10.4 **Term.** Confidentiality survives for three (3) years after termination of this Agreement.
+
+10.5 **Coordinated security disclosure.** Vulnerability reports follow the timeline in §12.4; both Parties will treat the underlying technical details as Confidential Information until coordinated public disclosure.
+
+---
+
+## 11. Compliance with Applicable Law
+
+11.1 **Export controls.** Skill Author will not make the Skill available to, or for the benefit of, persons or jurisdictions subject to U.S., EU, or U.K. comprehensive sanctions, currently including Cuba, Iran, North Korea, Syria, the Crimea / Donetsk / Luhansk regions of Ukraine, and any successor or expansion lists, without an applicable license from the relevant governmental authority. The canonical references are the OFAC sanctions list at `https://sanctionssearch.ofac.treas.gov/`, the BIS Entity List at `https://www.bis.doc.gov/index.php/policy-guidance/lists-of-parties-of-concern/entity-list`, and the EU consolidated list. Skill Author warrants it is not, and is not majority-owned by anyone, on the OFAC SDN list, the BIS Entity List, the BIS Denied Persons List, or the EU consolidated sanctions list. Note: this restriction governs the Verified-tier promotion; the underlying Skill source code remains MIT-licensed and is, as a matter of law, generally exportable EAR99 software not requiring a license.
+
+11.2 **Data protection.** To the extent the Skill processes personal data of Tenants or end-users, Skill Author will comply with applicable data-protection law including the GDPR, the UK GDPR, and the CCPA/CPRA. The Skill must not exfiltrate personal data to destinations not declared in the manifest. A data-processing addendum may be executed if a Tenant's deployment configuration requires it; that addendum is a separate instrument.
+
+11.3 **AI safety frameworks.** Where helpful, Skill Author will reference the OWASP LLM Top-10 and NIST AI Risk Management Framework (NIST AI 100-1) in its prompt-injection review documentation. Adherence is a best-practices touchstone, not a separate warranty beyond §4.1.
+
+11.4 **Anti-bribery.** Each Party will comply with applicable anti-bribery and anti-corruption laws (FCPA, UK Bribery Act, equivalents).
+
+11.5 **Open-source commitment.** Both Parties acknowledge the Skill is and remains MIT-licensed. Nothing in this Agreement, including any compliance obligation, may be enforced in a manner that would require Skill Author to relicense or restrict the Skill's MIT distribution.
+
+---
+
+## 12. Anti-Abuse and Integrity Operations
+
+12.1 **Prompt-injection review.** Each Verified-tier submission requires a fresh prompt-injection review attestation under §4.1, signed at the major-release granularity. A "major release" tracks `manifest.ts` semver-major bumps and any change to system prompts, retrieved-context paths, or tool descriptions.
+
+12.2 **No telemetry exfiltration.** The Skill must not transmit Tenant data, audit-stream events, or grant-JWT contents to any host not declared in the connector manifest's egress-host list referenced by the Skill. The audit-stream subsystem is the canonical observability path.
+
+12.3 **No runtime override of the Policy Envelope.** The Skill's runtime behavior must remain inside the installed Policy Envelope. The policy engine is the enforcement boundary; any attempt to bypass it (e.g., via a tool description that instructs the LLM to ignore caps) is a §4.4 breach.
+
+12.4 **Security disclosure timeline.** On discovery of a P1 Security Finding, Skill Author will notify Glide at `security@glide.co` (or such other channel as Glide designates) within twenty-four (24) hours of becoming aware. Both Parties will coordinate public disclosure once a fix is available, targeting a ninety (90) day disclosure window or earlier with mutual consent.
+
+12.5 **Glide audit right.** Glide may, on reasonable written notice and no more than twice per calendar year (excluding incident response), request a written attestation that §§4.1–4.4 remain accurate. Glide may also re-run automated CI gates (manifest validation, contract tests, prompt-injection-review checklist, scope-minimization affidavit) at any time.
+
+12.6 **Glide's revocation right (reaffirmed).** Independent of any other remedy, Glide may revoke or suspend the Verified Mark per §7 for any §4 breach, P1 Security Finding, or failure to meet §12 commitments.
+
+12.7 **Forensic preservation.** Following a P1 Security Finding, Skill Author will preserve relevant logs, code revisions, and review notes for ninety (90) days to support coordinated remediation. Records may be subject to confidentiality under §10.
+
+---
+
+## 13. Dispute Resolution
+
+13.1 **Governing law.** This Agreement is governed by the laws of the **State of Delaware**, USA, without regard to conflict-of-laws rules. The U.N. Convention on Contracts for the International Sale of Goods does not apply.
+
+13.2 **Informal resolution first.** The Parties will first attempt to resolve any dispute informally for thirty (30) days after written notice describing the dispute.
+
+13.3 **Binding arbitration.** Any dispute not resolved informally will be finally resolved by binding arbitration administered by **JAMS** under its Streamlined Arbitration Rules, seated in **San Francisco, California**, before a single arbitrator. The arbitrator may award any remedy a court could, subject to the limitations in §9.
+
+13.4 **Carve-out for injunctive relief.** Either Party may seek injunctive or equitable relief in any court of competent jurisdiction to (a) protect intellectual-property rights, (b) prevent unauthorized use of the Verified Mark, (c) enjoin a P1 Security Finding's exploitation, or (d) enforce confidentiality.
+
+13.5 **Class-action waiver.** Each Party waives any right to participate in a class, collective, or representative action against the other arising under this Agreement.
+
+13.6 **Attorney-fee reciprocity.** The prevailing Party in any dispute under this Agreement is entitled to recover reasonable attorney's fees and costs from the non-prevailing Party, subject to the arbitrator's or court's discretion.
+
+13.7 **Statute of limitations.** Any claim arising under this Agreement must be brought within one (1) year of the date the claim accrued, except where applicable law prohibits a shorter limitations period.
+
+---
+
+## 14. General
+
+14.1 **Assignment.** Neither Party may assign this Agreement without the other's prior written consent, except that either Party may assign to a successor in connection with a merger, acquisition, or sale of substantially all assets, on written notice. Assignment without consent is void.
+
+14.2 **Notices.** Notices under this Agreement are effective when sent to the legal-notice addresses on the signature page (or, for security-related notices, to `security@glide.co` and Skill Author's published security contact). Email is sufficient for routine notices; certified mail or recognized courier is required for termination and indemnification claims.
+
+14.3 **Entire agreement.** This Agreement, together with the MIT license carried in `LICENSE`, the manifest schema in `packages/skills/_base/src/manifest.ts`, and any executed addenda, is the entire agreement between the Parties regarding the Verified Tier and supersedes all prior or contemporaneous understandings on that subject.
+
+14.4 **Amendments.** Amendments must be in a writing signed by both Parties. Glide may publish updated brand-use guidelines or prompt-injection-review checklists from time to time; those documents are incorporated by reference but cannot expand the warranties in §4 without a written amendment.
+
+14.5 **Severability.** If any provision is held unenforceable, the rest remains in effect, and the Parties will substitute an enforceable provision reflecting the original intent as closely as possible.
+
+14.6 **No waiver.** A Party's failure to enforce any right is not a waiver of that or any other right.
+
+14.7 **Force majeure.** Neither Party is liable for delay or failure due to causes beyond its reasonable control (acts of God, war, civil unrest, government action, infrastructure outage at a third party), provided the affected Party promptly notifies the other and uses commercially reasonable efforts to resume.
+
+14.8 **Independent contractors.** The Parties are independent contractors. Nothing creates a partnership, joint venture, agency, or employment relationship.
+
+14.9 **Counterparts; electronic signature.** This Agreement may be executed in counterparts, including via electronic signature, each of which is an original.
+
+---
+
+## Signature Page
+
+**Axtior, Inc. (Glide)**
+
+Name: ************\_\_\_************
+Title: ************\_\_\_\_************
+Date: ************\_\_\_\_************
+Legal-notice email: legal@glide.co
+Security contact: security@glide.co
+
+**Skill Author — `[SKILL_AUTHOR_LEGAL_NAME]`**
+
+Name: ************\_\_\_************
+Title: ************\_\_\_\_************
+Date: ************\_\_\_\_************
+Legal-notice email: ************\_\_\_************
+Security contact: ************\_\_\_************
+
+Skill slug: `[SKILL_ID]`
+Effective Date: `[EFFECTIVE_DATE]`
+
+---
+
+_Document status: TEMPLATE. Counsel review pending. Do not execute without sign-off from Axtior counsel._
+

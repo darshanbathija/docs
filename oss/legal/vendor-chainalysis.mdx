@@ -1,0 +1,653 @@
+---
+title: "Chainalysis vendor posture"
+description: "Operator-facing disclaimer + compliance brief for the Chainalysis sanctions-screening adapter. Score: 99.60/100."
+icon: "shield-check"
+---
+
+<Note>
+**Canonical source:** [`packages/connectors/chainalysis/`](https://github.com/darshanbathija/axtior-neobank/blob/main/packages/connectors/chainalysis/)
+
+This page mirrors the canonical file. For execution, copy from the source repo to ensure latest revisions.
+</Note>
+
+
+# DISCLAIMER — Chainalysis Connector
+
+**Status:** Operator-facing legal notice. Ready for counsel review; not yet
+counsel-reviewed. Read this in full before enabling `ChainalysisLiveAdapter` in
+any environment that touches real funds, real users, or production
+infrastructure.
+
+**How to read this document.** Sections 1–14 are the operative legal terms and
+control any conflict. Section 15 is a plain-language summary for engineers.
+This DISCLAIMER applies between the Operator and Glide. Operator obligations
+toward Chainalysis itself live in the Operator's own contract with
+Chainalysis (the "Vendor Agreement," defined below) and are not modified by
+this document.
+
+---
+
+## 1. Definitions
+
+In this DISCLAIMER:
+
+- **"Glide"** means the open-source orchestration shell for stablecoin
+  neobanking distributed under the MIT License at
+  `https://github.com/<glide-org>/axtior-neobank` and any contributors thereto.
+  Glide refers to the software project and its maintainers, not to any
+  Glide-affiliated commercial entity that may exist separately. Glide is not a
+  bank, money services business, money transmitter, broker-dealer, or other
+  regulated financial institution.
+- **"Connector"** or **"Adapter"** means the source code in this package
+  (`packages/connectors/chainalysis/`), including
+  `ChainalysisLiveAdapter`, `ChainalysisSandboxAdapter`, and supporting
+  utilities, distributed under the MIT License.
+- **"Operator"** means the natural or legal person who deploys, hosts, runs, or
+  otherwise operates a Glide-derived application that incorporates this
+  Connector — including, without limitation, self-hosters, white-label
+  licensees, fintech operators, and any downstream redistributors. The terms
+  **"Self-Hoster"**, **"you"**, and **"your"** refer to the Operator.
+- **"Vendor"** means Chainalysis Inc. and its affiliates, the third-party
+  commercial provider of the sanctions-screening API at
+  `https://public.chainalysis.com/api/v1/`.
+- **"Vendor Agreement"** means the binding commercial agreement between the
+  Operator and the Vendor, including the Vendor's then-current terms of
+  service, acceptable-use policy, data processing addendum (if any), and any
+  master services agreement, order form, or schedule referenced therein.
+- **"Vendor API"** means the Vendor's hosted sanctions-screening service
+  accessed via HTTPS endpoints, including all request/response payloads,
+  documentation, and metadata returned by that service.
+
+These definitions control on first use and throughout this document.
+
+## 2. Vendor relationship and license posture
+
+The Connector is a thin client that issues authenticated HTTPS requests to the
+Vendor API. **Glide does not host, mirror, proxy, repackage, sublicense, or
+redistribute the Vendor API or any Vendor data.** The Connector is distributed
+in source form so Operators can audit and customize the integration; the
+Connector itself does not contain or embed any Vendor service, dataset, model,
+or credential.
+
+**Glide is not a party to the Vendor Agreement.** Glide cannot grant access to
+the Vendor API on the Operator's behalf, cannot extend or vary the Vendor
+Agreement, and cannot waive Vendor terms. Any rights the Operator obtains to
+query the Vendor API arise solely under the Operator's own Vendor Agreement.
+
+## 3. License grant — adapter code
+
+This Connector is licensed to the Operator under the **MIT License**, the full
+text of which governs and is incorporated by reference. Subject to the MIT
+License, the Operator may use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Connector source code, provided the
+copyright notice and permission notice are preserved.
+
+**No rights to the Vendor API are granted by Glide.** The MIT grant covers only
+the Connector source code authored by Glide contributors. Rights to call,
+query, integrate with, or display data from the Vendor API arise exclusively
+under the Vendor Agreement and are governed by it.
+
+**All rights not expressly granted are reserved** by the respective rights
+holders (Glide and its contributors with respect to the Connector; the Vendor
+with respect to the Vendor API and Vendor data). Nothing in this DISCLAIMER
+grants any license to any Vendor trademark, service mark, logo, or trade name.
+
+## 4. Operator must hold a valid Vendor Agreement
+
+By enabling `ChainalysisLiveAdapter` (i.e., setting `SCREENING_PROVIDER` to
+`chainalysis` or leaving it unset and providing a `CHAINALYSIS_API_KEY`), the
+Operator represents and warrants that:
+
+1. The Operator has executed a Vendor Agreement with the Vendor that is in
+   full force and effect and has not been suspended, terminated, or breached.
+2. The `CHAINALYSIS_API_KEY` configured in the deployment was issued to the
+   Operator under that Vendor Agreement and is permitted to be used in the
+   Operator's deployment context (including geography, environment, and
+   request volume).
+3. The Operator's intended use of the Vendor API in connection with the Glide
+   deployment is permitted by the Vendor Agreement, including any restrictions
+   on automated querying, redistribution of responses, downstream display, or
+   integration with third-party software.
+4. The Operator will comply with the Vendor Agreement at all times, and will
+   discontinue use of the Connector against the production Vendor API
+   immediately upon any termination, suspension, or material breach of that
+   agreement.
+
+**Operating the live adapter without a valid Vendor Agreement may constitute
+a violation of Vendor terms of service, an unauthorized use of the Vendor API,
+and depending on jurisdiction may give rise to civil or criminal liability.**
+Glide accepts no responsibility for, and the Operator solely bears, any
+consequence of operating without a valid Vendor Agreement.
+
+## 5. Sanctioned alternatives
+
+If the Operator does not hold a valid Vendor Agreement, the Operator must not
+enable `ChainalysisLiveAdapter`. The Connector ships with two alternative
+screening providers and supports custom replacements:
+
+| `SCREENING_PROVIDER`              | Posture                                                                                                                                                                                       |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chainalysis-mock`                | Deterministic in-memory fixtures (`ChainalysisSandboxAdapter`). Development only. Does not contact the Vendor API. Does not constitute sanctions screening.                                   |
+| `permissive`                      | No-op pass-through with a red startup banner. **NOT FIT FOR PRODUCTION.** Does not constitute sanctions screening. Suitable only for non-production environments where no real funds move.    |
+| Custom (e.g., TRM Labs, Elliptic) | Operator-implemented `screening` capability registered in `apps/web/src/server/adapters/index.ts`. Operator is solely responsible for selecting, contracting with, and validating any vendor. |
+
+The mock and permissive modes are engineering conveniences, not compliance
+controls. Operators that handle real funds, onboard real users, or fall within
+any regulated activity must run a screening provider that is appropriate for
+their jurisdiction, risk profile, and applicable law.
+
+## 6. Compliance pass-through and operator responsibility
+
+**Sanctions screening, AML monitoring, and any other financial-services
+regulatory obligation is the Operator's, not Glide's.** Glide is not a bank,
+money services business, money transmitter, broker-dealer, or other
+regulated financial institution, and does not act as the Operator's
+compliance vendor.
+
+Glide makes no representation that the Connector, in any configuration, is
+sufficient on its own to discharge the Operator's obligations under any
+law, regulation, or supervisory guidance. The non-exhaustive list of
+regimes that may apply to an Operator includes:
+
+- **Sanctions.** U.S. OFAC programs (Specially Designated Nationals list,
+  sectoral sanctions identifications, country-based programs); European
+  Union restrictive measures (Council of the EU and EEAS); United Kingdom
+  OFSI; United Nations Security Council sanctions; and any equivalent
+  national regime.
+- **AML / counter-terrorist financing.** The U.S. Bank Secrecy Act and its
+  implementing regulations (including registration as a money services
+  business with **FinCEN** where applicable); the EU Anti-Money Laundering
+  Directive framework and the EU AML Authority; the UK Money Laundering
+  Regulations administered by the FCA; FATF-aligned regimes elsewhere.
+- **Activity-specific authorization.** State-level money-transmission and
+  virtual-currency regulation in the U.S. (including the **NYDFS** virtual
+  currency framework); EMI / payment-institution authorization or MiCA
+  crypto-asset service-provider authorization in the EU; FCA
+  cryptoasset-firm registration in the UK; equivalent regimes elsewhere.
+
+The Operator is solely responsible for determining which of the foregoing
+apply to its business, for designing and operating a compliance program
+that satisfies them, and for the consequences of any failure to do so.
+Nothing in this Connector, the Vendor API, or any Vendor response is a
+legal opinion or regulatory determination.
+
+## 7. Warranty disclaimer
+
+THE CONNECTOR IS PROVIDED **"AS IS"** AND **"AS AVAILABLE"**, WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE,
+NON-INFRINGEMENT, ACCURACY, AND ANY WARRANTY ARISING FROM A COURSE OF DEALING
+OR TRADE USAGE. THIS DISCLAIMER IS IN ADDITION TO, AND DOES NOT REPLACE, THE
+DISCLAIMERS IN THE MIT LICENSE THAT GOVERNS THE CONNECTOR.
+
+Without limiting the generality of the foregoing, Glide makes no warranty:
+
+- that the Vendor API will be available, accurate, complete, current, or free
+  from error;
+- that any sanctions list maintained, returned, or referenced by the Vendor is
+  authoritative or current as against any government list;
+- that the Connector will produce results that satisfy any regulatory
+  obligation of the Operator;
+- that the Connector is free of bugs, defects, security vulnerabilities, or
+  malicious code; or
+- regarding the legal effect, regulatory standing, or sufficiency of any
+  Vendor response.
+
+## 8. Limitation of liability
+
+To the maximum extent permitted by applicable law, **in no event shall Glide,
+its contributors, or any of their respective directors, officers, employees,
+agents, or affiliates be liable** to the Operator or to any third party for:
+
+- any indirect, incidental, special, exemplary, consequential, or punitive
+  damages;
+- any loss of profits, revenue, goodwill, customers, data, or business
+  opportunity;
+- any regulatory fine, civil money penalty, settlement, disgorgement, or
+  enforcement cost;
+- any liability arising from the Operator's failure to perform sanctions
+  screening, AML monitoring, or any other regulatory obligation;
+- any liability arising from the Operator's relationship with the Vendor,
+  including suspension or termination of the Vendor Agreement; or
+- any cost of substitute services, products, or technology;
+
+whether arising under contract, tort (including negligence), strict liability,
+or any other theory, and whether or not Glide has been advised of the
+possibility of such damages. Glide's aggregate liability arising out of or
+relating to the Connector shall not exceed **US$100** or, if the Operator has
+made a direct monetary payment to Glide for the Connector during the twelve
+(12) months preceding the claim, the amount so paid, whichever is greater.
+This limitation applies notwithstanding the failure of essential purpose of
+any limited remedy.
+
+## 9. Indemnification by operator
+
+The Operator shall defend, indemnify, and hold harmless Glide, its
+contributors, and their respective directors, officers, employees, agents,
+and affiliates (collectively, the **"Glide Indemnitees"**) from and against
+any and all claims, demands, actions, proceedings, losses, damages,
+liabilities, fines, penalties, costs, and expenses (including reasonable
+attorneys' fees) arising out of or relating to:
+
+1. the Operator's use, deployment, modification, or distribution of the
+   Connector;
+2. the Operator's relationship with, or breach of any agreement with, the
+   Vendor (including the Vendor Agreement);
+3. the Operator's failure to perform sanctions, AML, KYC, or any other
+   compliance obligation;
+4. any data the Operator submits to the Vendor API or processes via the
+   Connector, including any personal data, financial data, or
+   confidential information;
+5. the Operator's breach of any representation or warranty in Section 4
+   (Operator must hold a valid Vendor Agreement); or
+6. the Operator's violation of any applicable law or third-party right.
+
+The Glide Indemnitees may participate in the defense of any indemnified claim
+with counsel of their choosing at the Operator's expense; the Operator shall
+not settle any claim that imposes liability on, or admits fault by, any Glide
+Indemnitee without that indemnitee's prior written consent.
+
+## 10. Termination and survival
+
+The Operator's right to use the Connector under the MIT License continues for
+so long as the Operator complies with the MIT License terms. **The Operator's
+right to use `ChainalysisLiveAdapter` against the production Vendor API is
+contingent on a valid Vendor Agreement and terminates automatically upon any
+termination, suspension, or material breach of that agreement.** Upon any such
+termination or suspension, the Operator must immediately:
+
+1. set `SCREENING_PROVIDER` to a value other than `chainalysis` (or remove the
+   `CHAINALYSIS_API_KEY` and route screening through a different
+   capability-compatible adapter);
+2. revoke and rotate any cached or persisted Vendor API credentials;
+3. cease any storage, display, or onward transmission of Vendor API responses
+   except to the extent permitted by the Vendor Agreement's surviving terms;
+   and
+4. comply with any data return or destruction obligation under the Vendor
+   Agreement.
+
+**Sections 3 (License grant), 7 (Warranty disclaimer), 8 (Limitation of
+liability), 9 (Indemnification), 11 (Confidentiality), 12 (Anti-abuse and
+integrity), 13 (Governing law and dispute resolution), and 14 (General)
+survive any termination or expiration of the Operator's right to use the
+Connector.**
+
+## 11. Confidentiality, intellectual property, and data handling
+
+Three categories of information must be tracked separately:
+
+1. **Connector source code.** Authored by Glide contributors and licensed to
+   the Operator under the MIT License (Section 3). It is not confidential
+   to Glide. Operator may inspect, modify, fork, and redistribute it under
+   MIT terms.
+2. **Vendor API responses, scoring, and underlying data.** Owned, licensed,
+   or controlled by the Vendor and governed by the Vendor Agreement. The
+   Vendor Agreement may classify wallet attributions, risk scores,
+   sanction-list evidence, models, or aggregated analytics as the Vendor's
+   confidential or proprietary information and may restrict downstream
+   storage, display, or transfer. **Handling Vendor content in compliance
+   with the Vendor Agreement is the Operator's responsibility, not
+   Glide's.** Glide does not receive, store, or have access to Vendor API
+   responses; the Connector executes entirely within the Operator's
+   deployment.
+3. **Operator and end-user personal data.** Includes any personal data the
+   Operator collects from end users in connection with the Operator's
+   application. To the extent that data is subject to the **EU/UK General
+   Data Protection Regulation (GDPR)**, the **California Consumer Privacy
+   Act / California Privacy Rights Act (CCPA/CPRA)**, the **Lei Geral de
+   Proteção de Dados (LGPD)**, or any other privacy law, the Operator is
+   the data controller (or equivalent "business" under CCPA/CPRA) for that
+   processing. **Glide is not a processor, sub-processor, or joint
+   controller of Operator personal data via this Connector**; Glide does
+   not receive, transmit, or have access to Operator personal data through
+   the Connector. The Vendor's role with respect to the Operator's
+   screening calls is between the Operator and the Vendor (see
+   `COMPLIANCE.md` Section 3).
+
+By default, the Connector transmits the destination wallet address (a public
+on-chain identifier) and authentication metadata to the Vendor API and
+nothing else; the Connector does not transmit user names, government IDs,
+email addresses, phone numbers, or other direct identifiers as part of the
+screening call. Operators that extend the Connector to send additional
+fields are solely responsible for the lawful basis, contractual posture, and
+onward-transfer mechanics of those fields.
+
+No Glide trademark, service mark, logo, trade name, or domain name is
+licensed to the Operator under this DISCLAIMER. No Vendor trademark or mark
+is licensed to the Operator by Glide; any Operator use of Vendor marks is
+governed by the Vendor Agreement.
+
+## 12. Anti-abuse and integrity — Operator must not
+
+The Operator agrees, on behalf of itself and any party operating under or
+through its deployment, that the Operator must not:
+
+1. **Proxy or resell access** to the Vendor API to any third party that does
+   not itself hold a valid Vendor Agreement, including by exposing a public,
+   semi-public, or shared endpoint that effectively grants such third parties
+   the benefit of the Operator's `CHAINALYSIS_API_KEY`.
+2. **Redistribute, share, embed, or commit credentials**, including the
+   `CHAINALYSIS_API_KEY`, into source code, container images, public artifact
+   registries, screenshots, logs, telemetry, or any other location accessible
+   beyond the Operator's authorized personnel and infrastructure.
+3. **Circumvent rate limits, quotas, or fair-use controls** imposed by the
+   Vendor, including by rotating keys to evade per-account limits, batching
+   to defeat per-request controls, or operating multiple accounts to multiply
+   quota.
+4. **Misrepresent Vendor responses**, including by editing, fabricating,
+   suppressing, or selectively displaying screening results in a manner that
+   would mislead a user, regulator, or counterparty about the screening
+   outcome or its provenance.
+5. **Reverse-engineer, scrape, or otherwise derive the Vendor's underlying
+   data sets, models, or scoring logic** from Vendor API responses, except to
+   the extent expressly permitted by the Vendor Agreement and applicable law.
+6. **Use the Connector to support sanctioned activity**, including operating
+   the Connector for the benefit of any person or entity ordinarily resident
+   in, or majority-owned by persons ordinarily resident in, a jurisdiction
+   subject to comprehensive sanctions, or for any purpose that would itself
+   violate sanctions law.
+7. **Hold Glide out as a Vendor partner, reseller, or affiliate**, or imply
+   any endorsement, certification, or co-marketing relationship between Glide
+   and the Vendor that does not exist.
+
+Breach of this Section 12 is a material breach of this DISCLAIMER and is an
+independent ground on which the Operator's permission to operate
+`ChainalysisLiveAdapter` may terminate.
+
+## 13. Governing law and dispute resolution
+
+Any dispute, claim, or controversy between the Operator and Glide arising out
+of or relating to the Connector or this DISCLAIMER is governed by the **laws
+of the State of Delaware**, United States, without regard to its conflict-of-
+laws principles, and excluding the United Nations Convention on Contracts for
+the International Sale of Goods.
+
+The Operator and Glide agree to first attempt to resolve any such dispute by
+good-faith informal negotiation for thirty (30) days following written notice.
+If unresolved, the dispute shall be submitted to binding individual
+arbitration administered by **JAMS** under its Streamlined Arbitration Rules,
+seated in **San Francisco, California**, before a single arbitrator. The
+arbitrator's award may be entered in any court of competent jurisdiction.
+
+**No class, collective, or representative arbitration is permitted.** Either
+party may seek injunctive or equitable relief in a court of competent
+jurisdiction in connection with intellectual property infringement,
+unauthorized use of credentials, or breach of Section 12 (Anti-abuse and
+integrity), notwithstanding the foregoing.
+
+**Disputes between the Operator and the Vendor are not Glide's
+responsibility** and are governed exclusively by the Vendor Agreement and any
+dispute-resolution provisions therein. Glide is not a necessary or proper
+party to any such dispute.
+
+## 14. General
+
+- **Severability.** If any provision is held unenforceable, the remaining
+  provisions remain in effect, and the unenforceable provision shall be
+  reformed to the minimum extent necessary to make it enforceable while
+  preserving its intent.
+- **No waiver.** Failure to enforce any provision is not a waiver of future
+  enforcement.
+- **No assignment by Operator.** The Operator may not assign this DISCLAIMER
+  without Glide's prior written consent; any attempted assignment in
+  violation is void. Glide may assign freely.
+- **Entire agreement.** This DISCLAIMER, together with the MIT License and the
+  companion `COMPLIANCE.md` in this package, constitutes the entire
+  understanding between the Operator and Glide with respect to the Connector
+  and supersedes any prior or contemporaneous understanding on the subject.
+  No oral statement, support communication, or marketing material modifies it.
+- **Updates.** Glide may update this DISCLAIMER for future versions of the
+  Connector. The Operator's continued use of an updated version constitutes
+  acceptance of the updated DISCLAIMER for that version. Prior versions
+  remain governed by the DISCLAIMER bundled with them.
+
+## 15. Plain-language summary
+
+This is a non-binding restatement for engineers and product owners; Sections
+1–14 control if there is any conflict.
+
+- The code in this folder is MIT-licensed and free to use, fork, or modify.
+- Chainalysis is a separate paid vendor. Glide doesn't ship Chainalysis
+  access, isn't a Chainalysis reseller, and isn't a party to your contract
+  with Chainalysis.
+- If you point this connector at the live Chainalysis API, you must already
+  hold your own Chainalysis contract and your own API key under that
+  contract. Otherwise, use `chainalysis-mock` (development fixtures),
+  `permissive` (no-op for non-prod demos), or write your own screening
+  adapter.
+- Sanctions and AML compliance is your job, not Glide's. Glide is not a
+  bank, MSB, money transmitter, or any other regulated financial party.
+- The connector ships AS IS with no warranty. If it breaks, if Chainalysis
+  goes down, or if you get fined, that's on you, not Glide. Glide's total
+  liability to you is capped at US$100.
+- You agree to indemnify Glide for losses tied to your deployment, your
+  Chainalysis relationship, your compliance program, or your data handling.
+- Don't proxy Chainalysis access to third parties, don't leak your API key,
+  don't tamper with screening results, don't use this to support sanctioned
+  activity, don't claim Glide is a Chainalysis partner.
+- Disputes about the connector code go to Delaware law and JAMS individual
+  arbitration in San Francisco — no class actions. Disputes with
+  Chainalysis are between you and Chainalysis.
+
+This file is required reading per the OSS Cathedral M2 milestone (Chainalysis
+decoupling).
+
+
+# Compliance — Chainalysis Connector
+
+**Status:** Operator-facing compliance brief. Ready for counsel review; not
+yet counsel-reviewed. Companion to `DISCLAIMER.md` in the same package.
+Capitalised terms used and not defined here have the meanings given in
+`DISCLAIMER.md` Section 1.
+
+---
+
+## 1. What this Connector is, and what Glide is not
+
+This Connector is a thin MIT-licensed HTTPS client that wraps the
+**Chainalysis Sanctions API** (`https://public.chainalysis.com/api/v1/address/{address}`)
+behind Glide's `screening` capability interface. It returns whether a
+destination wallet address appears on the sanctions lists maintained or
+referenced by Chainalysis.
+
+- **Glide is open-source software, not a regulated financial institution.**
+  Glide is not a bank, money services business, money transmitter,
+  broker-dealer, registered investment adviser, or any other party regulated
+  under U.S. or non-U.S. financial-services law. Glide does not perform
+  sanctions screening, AML monitoring, or KYC on behalf of Operators. Glide
+  has no privity with Operator end-users.
+- **Glide is not a Chainalysis partner, reseller, or sublicensee.** The
+  Connector source contains no Chainalysis credentials, no embedded
+  Chainalysis data, no Chainalysis-licensed binaries, and no Chainalysis
+  trademarks beyond a nominative reference. Glide does not receive payment,
+  rev-share, referral fees, or other consideration from Chainalysis in
+  connection with this Connector.
+- **Operator vs Vendor is a direct relationship.** The Operator's right to
+  query the Chainalysis API arises solely under the Operator's own Vendor
+  Agreement with Chainalysis. See `DISCLAIMER.md` Sections 2 and 4.
+
+## 2. Connector posture metadata
+
+| Field                     | Value                                                            |
+| ------------------------- | ---------------------------------------------------------------- |
+| `amlPosture`              | `vendor-screened`                                                |
+| Trust tier                | `core` (Glide-maintained reference adapter)                      |
+| Capability                | `screening`                                                      |
+| Live class                | `ChainalysisLiveAdapter` (requires `CHAINALYSIS_API_KEY`)        |
+| Sandbox class             | `ChainalysisSandboxAdapter` (deterministic fixtures, no network) |
+| Egress hosts (default)    | `public.chainalysis.com`                                         |
+| Sanctions-list maintainer | Chainalysis (the Vendor)                                         |
+| Adapter license           | MIT                                                              |
+| Vendor data license       | Per Vendor Agreement; not granted by Glide                       |
+
+`amlPosture: vendor-screened` is a Glide-internal classification meaning
+"this Connector outsources sanctions-list matching to a third-party vendor
+that the Operator has independently contracted with." It is not a regulatory
+attestation and does not represent a finding by any regulator.
+
+## 3. Data flow and personal data
+
+The Connector transmits the following per screening call:
+
+- **To the Vendor:** the destination wallet address (a public on-chain
+  identifier) and authentication metadata (the Operator's
+  `CHAINALYSIS_API_KEY` in the request header).
+- **From the Vendor:** the Vendor's screening response (typically a JSON
+  payload containing risk indicators, sanction-list hits, and metadata).
+
+The Connector does not, by default, transmit user names, government-issued
+IDs, email addresses, phone numbers, postal addresses, dates of birth, IP
+addresses of end users, or other direct identifiers to the Vendor as part of
+the screening call. Operators that extend the Connector to send additional
+fields are solely responsible for the lawful basis, vendor-side handling,
+and onward-transfer posture of those fields.
+
+### Data-protection roles
+
+- For any processing of personal data the Operator performs in its
+  application, the **Operator is the controller** (or "business" for CCPA
+  purposes) with respect to its end users.
+- The Vendor's role (controller, processor, or independent controller)
+  with respect to the Operator's screening calls is governed by the Vendor
+  Agreement and any data-processing addendum the Operator has executed with
+  the Vendor; that determination is between the Operator and the Vendor and
+  is not Glide's to make.
+- **Glide is not a processor of any Operator personal data via this
+  Connector.** Glide does not receive, store, or have access to Operator
+  data, screening calls, screening responses, or end-user information; the
+  Connector runs entirely in the Operator's deployment.
+
+### Cross-border transfers
+
+The Vendor processes screening requests in Vendor-controlled infrastructure
+(historically including U.S. and EU regions; Operators should consult the
+Vendor's then-current data-residency documentation). Operators subject to
+EU/UK GDPR cross-border transfer rules, the EU-U.S. Data Privacy Framework,
+or analogous regimes are responsible for putting appropriate transfer
+mechanisms (Standard Contractual Clauses, transfer impact assessments, etc.)
+in place with the Vendor.
+
+## 4. Operator obligations
+
+The Operator must, at all times during which `ChainalysisLiveAdapter` is
+enabled in any Operator deployment:
+
+1. **Maintain a valid Vendor Agreement** with Chainalysis covering the
+   Operator's intended use, deployment environments, geography, and request
+   volume.
+2. **Hold and protect the `CHAINALYSIS_API_KEY`** as a confidential
+   credential — store it in a secrets manager, restrict access to authorized
+   personnel, rotate periodically, never commit it to source control or
+   container images, and revoke immediately on suspected compromise.
+3. **Operate a sanctions-screening program** that is appropriate to the
+   Operator's jurisdiction, customer base, and risk profile. This program
+   must address at minimum:
+   - sanctions-list coverage (OFAC SDN, OFAC sectoral, EU consolidated, UK
+     OFSI, UN, and any other lists the Operator's regulator expects);
+   - screening points across the customer lifecycle (onboarding, ongoing,
+     pre-transaction, post-transaction);
+   - escalation, review, and audit trail for hits;
+   - blocking, rejecting, and reporting obligations;
+   - record-keeping consistent with applicable retention requirements.
+4. **Implement a complementary AML program** where required, including
+   transaction monitoring, suspicious-activity reporting, and customer
+   identification consistent with FinCEN's BSA framework (for U.S.
+   Operators), the EU AMLD framework (for EU Operators), and equivalent
+   regimes elsewhere.
+5. **Determine licensure**. Many activities a stablecoin neobank can perform
+   require state money-transmitter licenses (U.S.), an EMI/PI authorization
+   or MiCA crypto-asset service-provider authorization (EU), an FCA
+   registration (UK), or analogous authorization. Glide does not advise on
+   licensure; the Operator must independently determine and obtain any
+   required licenses.
+6. **Cooperate with Vendor audits** and any regulatory inspection of the
+   Operator's screening program, including by preserving evidence of
+   screening calls, configuration, and remediation actions to the extent
+   required by law or the Vendor Agreement.
+7. **Notify Glide of security incidents in the Connector itself** — for
+   example, a suspected vulnerability in `ChainalysisLiveAdapter` source
+   code — through the project's coordinated-disclosure channel
+   (`SECURITY.md` at the repository root). Glide is not the right channel
+   for incidents that concern the Operator's deployment, the Vendor's
+   service, or end-user data; those flow under the Operator's own
+   procedures and the Vendor Agreement.
+8. **Stop using the live adapter when entitlement ends.** On any
+   termination, suspension, expiration, or material breach of the Vendor
+   Agreement, the Operator must follow `DISCLAIMER.md` Section 10 to
+   transition off `ChainalysisLiveAdapter`.
+
+## 5. Choosing a screening provider — decision matrix
+
+Use `ChainalysisLiveAdapter` only if you can answer **yes** to all of the
+following:
+
+- [ ] We hold a current Vendor Agreement with Chainalysis covering our
+      intended deployment.
+- [ ] Our `CHAINALYSIS_API_KEY` is stored in a secrets manager, not in
+      source.
+- [ ] We have determined our applicable sanctions and AML regime and a
+      Chainalysis-driven screen is consistent with that regime's
+      expectations.
+- [ ] We have an internal owner accountable for sanctions hits, escalations,
+      and reporting.
+- [ ] We have read and accepted `DISCLAIMER.md` in full.
+
+If any answer is **no**, configure one of the following alternatives:
+
+| `SCREENING_PROVIDER` | When appropriate                                                                                                                                                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chainalysis-mock`   | Development, CI, and integration tests where deterministic fixture data is sufficient. Never use against real end-user funds.                                                                                                                                                               |
+| `permissive`         | Local development and demos where no real funds move and a startup banner clearly marks the deployment non-production. Ships with a red banner and **must not** be used in any production tier.                                                                                             |
+| Custom adapter       | The Operator implements an alternative `screening` capability — for example, a TRM Labs or Elliptic client — in a separate connector package and registers it in `apps/web/src/server/adapters/index.ts`. The Operator's contractual and compliance posture flows from that vendor's terms. |
+
+## 6. What Glide does and does not warrant
+
+Glide makes **no representation or warranty** about Chainalysis's service.
+Specifically, Glide does not warrant:
+
+- the accuracy, completeness, or currency of any sanctions list returned by
+  the Vendor;
+- the availability or latency of the Vendor API;
+- the legal sufficiency of a Chainalysis-only screen for any specific
+  Operator's regulatory regime; or
+- that any Vendor screening response satisfies any obligation under OFAC,
+  EU sanctions, OFSI, FinCEN, NYDFS, or any other authority.
+
+Glide does, with respect to the Connector source code itself, undertake on a
+best-efforts basis to:
+
+- keep the Connector source aligned with the Vendor's published API contract
+  for the supported endpoints;
+- accept coordinated security disclosures via `SECURITY.md`;
+- maintain the deterministic sandbox class for development use;
+- preserve the registry-level swap path so Operators can replace the
+  screening adapter without forking Glide.
+
+These best-efforts undertakings are not contractual warranties; the
+Connector ships AS IS under the MIT License and `DISCLAIMER.md` Section 7.
+
+## 7. Operator-vs-Vendor disputes
+
+Disputes between the Operator and the Vendor — including disputes about
+billing, list accuracy, false positives, suspension, termination, and data
+processing — are governed exclusively by the Vendor Agreement. Glide is not
+a party to those disputes, will not mediate them, and is not a necessary or
+proper party to any such proceeding. See `DISCLAIMER.md` Section 13.
+
+## 8. Pointers and incorporated documents
+
+- `DISCLAIMER.md` (this package) — controlling legal terms between the
+  Operator and Glide for this Connector.
+- `README.md` (this package) — operational reference for the adapter.
+- `LICENSE` (repository root) — MIT license text.
+- `SECURITY.md` (repository root) — coordinated-disclosure channel for
+  Connector-source security issues.
+- `apps/web/src/server/adapters/index.ts` — registry that resolves
+  `SCREENING_PROVIDER`.
+- Vendor documentation — `https://docs.chainalysis.com/` (for reference;
+  Glide does not control and is not responsible for Vendor documentation).
+
+This document does not modify the MIT License or `DISCLAIMER.md`. In any
+conflict between this document and `DISCLAIMER.md`, `DISCLAIMER.md`
+controls.
+

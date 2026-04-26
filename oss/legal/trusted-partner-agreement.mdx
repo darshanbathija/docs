@@ -1,0 +1,415 @@
+---
+title: "Trusted Partner Agreement (template)"
+description: "Template contract between Glide and a Verified-tier connector vendor. Score: 96.67/100."
+icon: "handshake"
+---
+
+<Note>
+**Canonical source:** [`docs/TRUSTED_PARTNER_AGREEMENT.md`](https://github.com/darshanbathija/axtior-neobank/blob/main/docs/TRUSTED_PARTNER_AGREEMENT.md)
+
+This page mirrors the canonical file. For execution, copy from the source repo to ensure latest revisions.
+</Note>
+
+
+# Glide Trusted Partner Agreement
+
+**Status:** Template, ready for counsel review. Not yet reviewed by counsel.
+**Form:** v1.0
+**Last revised:** 2026-04-26
+**Applies to:** Promotion of a connector from `community` tier to `verified` tier in the Glide Marketplace.
+
+> **Plain-language summary (not part of the contract).** This is the agreement that lets a vendor's connector wear the Glide "Verified" badge, appear on the Marketplace, and ship enabled-by-default in Glide. It does NOT change the open-source license on the connector code — that stays MIT, and anyone can still fork it. What this agreement covers is the badge, the Marketplace placement, and the obligations that come with them: code-quality SLA, incident response, audit cooperation, and mutual indemnification. It does not bind end users or operators of self-hosted Glide deployments — they have their own separate terms with the partner. Counsel should review before either party signs.
+>
+> **How this Agreement is structured.**
+>
+> - §1 Definitions — what each capitalized term means.
+> - §§2–3 Promotion + license posture — what Verified Tier is, and why MIT still wins.
+> - §§4–5 Mutual trademark licenses — Verified Mark to Partner, Partner Marks to Glide.
+> - §§6–8 Partner operational obligations — code quality, incident response, audit cooperation.
+> - §§9–10 Confidentiality + compliance — info handling and legal posture.
+> - §11 Term, renewal, termination, revocation — including the 14-day non-emergency / immediate-emergency split.
+> - §§12–14 Risk allocation — warranties, indemnity, liability cap.
+> - §15 Disputes — Delaware law + JAMS SF arbitration with court carve-out for injunctive relief.
+> - §16 Boilerplate — including the explicit "Operators are not parties" clause.
+> - Schedules A–B — Connector reference card, side-letter slot for optional commercial extensions.
+
+---
+
+## Parties
+
+This Trusted Partner Agreement (this "**Agreement**") is entered into as of `[EFFECTIVE_DATE]` (the "**Effective Date**") by and between:
+
+- **Glide:** Axtior, Inc., a Delaware corporation with offices at `[GLIDE_ADDRESS]` ("**Glide**"); and
+- **Partner:** `[PARTNER LEGAL NAME]`, a `[PARTNER JURISDICTION]` `[PARTNER ENTITY TYPE]` with offices at `[PARTNER ADDRESS]` ("**Partner**").
+
+Glide and Partner are each a "**Party**" and together the "**Parties**." This Agreement governs the promotion of the connector identified below from `community` tier to `verified` tier in the Glide ecosystem.
+
+---
+
+## 1. Definitions
+
+Capitalized terms have the meanings given below. Defined terms are also referenced inline at first use elsewhere in this Agreement for ease of reading.
+
+1.1. "**Glide Software**" means the open-source orchestration shell distributed by Glide under the MIT License at `[GLIDE_REPO_URL]`, including all packages, applications, and components published from that repository.
+
+1.2. "**Connector**" means the source-code package located at `packages/connectors/[CONNECTOR_SLUG]/` in the Glide Software, together with its manifest, capability implementations, contract tests, and accompanying documentation, that integrates a Partner-controlled service into the Glide Software.
+
+1.3. "**Connector Slug**" means `[CONNECTOR_SLUG]`, the canonical identifier of the Connector as registered in the Glide manifest tree.
+
+1.4. "**Partner Service**" means the underlying Partner-operated product, API, or platform that the Connector integrates with.
+
+1.5. "**Trust Tier**" means a quality classification assigned to a Connector by Glide, having the values `community`, `verified`, or `core`, as defined in `packages/connectors/_base/src/trust-tier.ts`. Trust Tier is a code-quality classification and is not a license-tier or commercial gating mechanism.
+
+1.6. "**Verified Tier**" means the `verified` Trust Tier value, signifying that (a) the Connector has passed the Glide review checklist, (b) Partner has executed this Agreement, and (c) the Connector ships enabled in default Glide builds with per-tenant opt-in.
+
+1.7. "**Verified Mark**" means the visual badge, label, and textual designation "Glide Verified," "Verified Connector," or substantially similar designation, displayed by Glide on the Marketplace and within the Glide Software to identify Verified-Tier Connectors.
+
+1.8. "**Marketplace**" means the public-facing catalog of connectors and skills hosted by Glide at `glide.co/connectors`, `docs.glide.dev`, and any successor URL designated by Glide, together with any in-product surfaces within the Glide Software that render the same catalog data.
+
+1.9. "**Marketplace Listing**" means the Connector's entry in the Marketplace, including its rendered card, detail page, Verified Mark, Partner Marks, and metadata sourced from the Connector's manifest.
+
+1.10. "**Operator**" means any natural person or entity that deploys, hosts, operates, or otherwise runs the Glide Software (including any fork or derivative) for itself or for end users, whether on Glide-operated infrastructure ("Glide Cloud") or on infrastructure controlled by the Operator ("Self-Hosted").
+
+1.11. "**Self-Hoster**" means an Operator running the Glide Software on infrastructure not controlled by Glide.
+
+1.12. "**End User**" means any natural person or entity that uses an instance of the Glide Software made available by an Operator, whether or not that End User has a contractual relationship with Partner.
+
+1.13. "**Major Release**" means a release of the Connector whose version number reflects a backwards-incompatible change to its public manifest, capability surface, or webhook contracts (i.e., a major-version SemVer bump).
+
+1.14. "**Partner Marks**" means the Partner trademarks, service marks, logos, and trade names that Partner authorizes Glide to display on the Marketplace Listing pursuant to Section 5.
+
+1.15. "**Glide Marks**" means the trademarks, service marks, logos, and trade names of Glide, including the Verified Mark.
+
+1.16. "**Confidential Information**" has the meaning given in Section 9.
+
+1.17. "**Code-Quality SLA**" has the meaning given in Section 6.
+
+1.18. "**Incident**" has the meaning given in Section 7.
+
+1.19. "**Effective Date**" has the meaning given in the Parties block above.
+
+1.20. "**MIT License**" means the version of the MIT License under which the Glide Software is distributed, a copy of which is available in the `LICENSE` file at the root of the Glide Software repository.
+
+1.21. "**Trusted Partner**" means a Partner that has executed this Agreement and whose Connector currently holds Verified-Tier status. The phrase is used as a descriptive label in marketing materials and in the Marketplace; it confers only the rights expressly granted in this Agreement.
+
+1.22. "**Side Letter**" means a separately-executed written agreement between the Parties that references this Agreement and addresses Glide-Cloud-only commercial extensions (such as review grants, sponsored placement, or payout integrations). A Side Letter is optional and is not required for Verified-Tier status.
+
+1.23. "**Fees**" means amounts (if any) that one Party agrees in writing to pay the other under a Side Letter. No Fees are owed under this Agreement absent a signed Side Letter.
+
+---
+
+## 2. Verified-Tier Promotion
+
+2.1. **Scope of promotion.** Subject to the terms of this Agreement, Glide will promote the Connector identified by `[CONNECTOR_SLUG]` from `community` Trust Tier to `verified` Trust Tier in the Glide Software for the version range `[CONNECTOR_VERSION_RANGE]`, and will display the Verified Mark and the Marketplace Listing for that version range.
+
+2.2. **One Agreement per Major Release.** This Agreement governs the Connector at the Major Release identified above. A new Major Release of the Connector requires either (a) a written renewal addendum referencing this Agreement, or (b) a new Trusted Partner Agreement on the then-current form. Until such renewal or new agreement is executed, the new Major Release ships at `community` Trust Tier with the standard banner, regardless of any prior Verified-Tier status.
+
+2.3. **No exclusivity.** Nothing in this Agreement grants either Party an exclusive right. Glide may verify other connectors that integrate competing services. Partner may participate in similar programs operated by other software platforms.
+
+2.4. **No fee, default.** Marketplace placement is offered at no fee for partners whose Connector touches regulated money movement (e.g., custody, banking-as-a-service, on/off-ramps, payment rails). Optional commercial extensions (Glide-Cloud-only review grants, payout integrations, sponsored-placement features) are addressed in a separate side letter referencing this Agreement; absence of such a side letter means no fee is owed by either Party for the rights granted herein.
+
+---
+
+## 3. Open-Source License Posture
+
+3.1. **Connector code remains MIT.** The source code of the Connector is distributed under the MIT License as part of the Glide Software. Nothing in this Agreement modifies, restricts, or supersedes that license. Any person or entity, including Partner's competitors, may fork, modify, redistribute, and use the Connector code under the MIT License regardless of Trust Tier or the existence or termination of this Agreement.
+
+3.2. **No chilling effect.** Glide will not invoke this Agreement, nor any breach or termination thereof, to restrict any person's rights under the MIT License with respect to the Connector code. Partner's promotional rights are separate from, and do not condition, the open-source rights of any third party.
+
+3.3. **Contributions under DCO.** Any contribution Partner makes to the Connector or the Glide Software through pull request, patch, or otherwise will be made under the MIT License and signed off under the Developer Certificate of Origin (DCO), version 1.1. Partner represents that each contributor authorized to submit on Partner's behalf has the right to do so.
+
+3.4. **What this Agreement does cover.** This Agreement covers (a) the Verified Mark, (b) the Marketplace Listing, (c) the Partner Marks license to Glide for Marketplace display, (d) the Code-Quality SLA, (e) the Incident response process, (f) confidentiality of incident reports and audit findings, (g) mutual indemnification within the agreed scope, and (h) the operational obligations between the Parties associated with Verified-Tier status.
+
+---
+
+## 4. Verified Mark — License from Glide to Partner
+
+4.1. **Limited license.** Subject to Partner's continuing compliance with this Agreement, Glide grants Partner a non-exclusive, non-transferable, non-sublicensable, royalty-free, revocable license, during the Term, to use the Verified Mark solely (a) on Partner's website, marketing materials, and case studies, in each case in connection with truthful statements about the Connector's Verified-Tier status, and (b) in co-marketing materials prepared in coordination with Glide.
+
+4.2. **Brand guidelines.** Partner will use the Verified Mark in conformance with Glide's then-current brand guidelines, made available at `[GLIDE_BRAND_GUIDELINES_URL]`. Glide may update those guidelines on at least 30 days' notice.
+
+4.3. **Reservation of rights.** Glide retains all right, title, and interest in and to the Verified Mark and the Glide Marks. No rights are granted to Partner other than those expressly stated in this Section 4. Partner will not register, attempt to register, or contest Glide's ownership of any Glide Marks.
+
+4.4. **Quality control.** Partner acknowledges that Glide must maintain control over the quality of goods and services associated with the Verified Mark. Glide may audit Partner's use of the Verified Mark and require correction of any non-conforming use within 14 days of notice.
+
+---
+
+## 5. Partner Marks — License from Partner to Glide
+
+5.1. **Limited license.** Subject to the terms of this Agreement, Partner grants Glide a non-exclusive, worldwide, non-transferable (except as provided in Section 14.5), royalty-free license, during the Term, to use the Partner Marks (a) on the Marketplace Listing for the Connector, (b) in the in-product Glide Software UI in connection with the Connector, (c) in Glide-prepared documentation, blog posts, case studies, and other communications referring truthfully to Partner as a Trusted Partner, and (d) in co-marketing materials prepared in coordination with Partner.
+
+5.2. **Reservation of rights.** Partner retains all right, title, and interest in and to the Partner Marks. No rights are granted to Glide other than those expressly stated in this Section 5.
+
+5.3. **Brand guidelines.** Glide will use the Partner Marks in conformance with Partner's then-current brand guidelines, provided in writing to Glide. Partner may update those guidelines on at least 30 days' notice.
+
+5.4. **Self-Hosted display.** Partner acknowledges that the Glide Software is open-source, and that Self-Hosters render the Marketplace Listing (including Partner Marks) from manifest data shipped in the Glide Software. The license in Section 5.1 extends to such Self-Hosted display when the Connector retains Verified-Tier status. If Verified-Tier status is revoked under Section 11 or this Agreement terminates, Partner Marks remain in any historical release artifacts of the Glide Software (because removing them from past releases is not feasible for an open-source project), but Glide will (a) revert the manifest in the then-current release branches to non-Verified Trust Tier, (b) remove the Partner Marks from the live Marketplace at `glide.co/connectors`, and (c) prevent further use of the Partner Marks in new Glide-prepared materials. Partner waives any claim against Glide arising solely from the persistence of Partner Marks in historical release artifacts.
+
+---
+
+## 6. Code-Quality SLA
+
+6.1. **Maintenance commitments.** During the Term, Partner will:
+
+(a) Keep the Connector functional against the then-current release of the Partner Service, including timely updates to track non-trivial Partner Service API changes;
+
+(b) Maintain passing contract tests against the Glide contract-test harness (per `packages/connectors/_base/src/contract-test-suite.ts`) for the Connector at every Major Release covered by this Agreement;
+
+(c) Maintain accurate manifest metadata, including declared egress hosts, capabilities, supported regions, and supported currencies; and
+
+(d) Designate at least one Partner technical contact for the Connector and keep that contact information current with Glide.
+
+6.2. **Vulnerability patch SLA.** Partner will, upon becoming aware of a security vulnerability in the Connector or in the manner in which the Connector is integrated:
+
+(a) Issue or coordinate a patch within **72 hours** for vulnerabilities classified as Critical (CVSS v3.1 base score 9.0–10.0, or otherwise reasonably classified as Critical by either Party);
+
+(b) Issue or coordinate a patch within **7 calendar days** for vulnerabilities classified as High (CVSS v3.1 base score 7.0–8.9, or otherwise reasonably classified as High);
+
+(c) Issue or coordinate a patch within **30 calendar days** for vulnerabilities classified as Medium or Low; and
+
+(d) Cooperate in good faith with Glide on coordinated disclosure timing and language.
+
+6.3. **No malicious code.** Partner represents and warrants that the Connector does not, and during the Term will not, contain (a) malicious code, viruses, worms, time bombs, or trojan horses, (b) telemetry, beacons, or analytics that exfiltrate End User data outside the declared egress hosts in the Connector manifest, (c) cryptocurrency miners, (d) hidden backdoors or undisclosed authentication bypass mechanisms, or (e) license-evasion mechanisms designed to defeat Glide's CI gates.
+
+6.4. **CI gate compliance.** Partner agrees that the Connector must continue to pass the eight-gate CI matrix specified in `.github/workflows/connector-skill-ci.yml` and related workflows, including manifest validation, contract tests, license-compatibility scan, supply-chain scan, egress-host lint, DCO sign-off, and signed-commits check. Glide may add or modify gates on at least 60 days' notice; failure to pass after the notice period is grounds for revocation under Section 11.
+
+---
+
+## 7. Incident Response
+
+7.1. **Definition.** An "**Incident**" means any of: (a) a security vulnerability in the Connector requiring patch under Section 6.2; (b) a Partner Service outage that materially affects Connector functionality; (c) a regulatory notice, action, or inquiry directed at Partner that materially impairs Partner's ability to operate the Partner Service in the Connector's declared regions; or (d) a confirmed compromise of Partner systems that could affect the integrity of Partner Service responses to Glide Software instances.
+
+7.2. **Notification.** Each Party will notify the other of an Incident affecting the Connector without undue delay and in any case:
+
+(a) Within **24 hours** for Critical Incidents (Section 6.2(a) class);
+
+(b) Within **72 hours** for High Incidents (Section 6.2(b) class); and
+
+(c) Within **5 business days** for Medium or Low Incidents.
+
+7.3. **Cooperation.** The Parties will cooperate in good faith on Incident response, including (a) joint root-cause analysis where feasible, (b) coordinated public disclosure where required, (c) deployment of fixes via the Connector release pipeline, and (d) mitigation guidance for Operators.
+
+7.4. **Operator and End User communications.** Glide may publish Incident advisories to Operators and the public, including in the Marketplace and in the Glide changelog, after coordinating disclosure language with Partner where reasonably practicable. Where regulatory or contractual obligations require faster disclosure than coordination allows, the disclosing Party will proceed with disclosure and notify the other Party as soon as feasible.
+
+---
+
+## 8. Audit Cooperation
+
+8.1. **Compliance artifact requests.** Up to twice per twelve-month period, with at least 30 days' written notice and at no charge to Partner, Glide may request from Partner reasonable compliance artifacts pertaining to the Connector and the underlying Partner Service, limited to the categories applicable to Partner's regulated activities. Examples include: SOC 2 Type II report (or equivalent), KYC/AML program summary, sanctions-screening policy summary, breach-notification policy, and most recent penetration-test summary.
+
+8.2. **Source review of the Connector.** Because the Connector is open-source, no separate source review is required for the Connector itself. Glide and any third party may review the Connector source at any time.
+
+8.3. **Operator audits.** Where an Operator (including a Self-Hoster) requests Partner audit cooperation pursuant to that Operator's separate agreement with Partner, this Section 8 does not displace that obligation; this Agreement governs only the cooperation between Glide and Partner.
+
+8.4. **Confidentiality of audit materials.** Materials provided under this Section 8 are Confidential Information of Partner under Section 9, and Glide will limit access to its personnel with a need-to-know.
+
+---
+
+## 9. Confidentiality
+
+9.1. **Definition.** "**Confidential Information**" means non-public information disclosed by one Party (the "**Discloser**") to the other (the "**Recipient**") that is identified as confidential at disclosure or that a reasonable person would understand to be confidential under the circumstances, including (a) Incident reports prior to coordinated disclosure, (b) audit materials provided under Section 8, (c) commercial terms in any side letter referencing this Agreement, and (d) prerelease product roadmap details exchanged between the Parties.
+
+9.2. **Exclusions.** Confidential Information does not include information that (a) is or becomes publicly available without breach of this Agreement, (b) was in Recipient's possession before receipt from Discloser, (c) is independently developed by Recipient without use of Confidential Information, or (d) is rightfully received from a third party without confidentiality obligation. The source code of the Connector and any other portion of the Glide Software is not Confidential Information.
+
+9.3. **Obligations.** Recipient will (a) use Confidential Information only to exercise rights and perform obligations under this Agreement, (b) protect it with the same care it uses for its own confidential information, in no event less than reasonable care, and (c) not disclose it to any third party except to its employees, affiliates, contractors, and professional advisers bound by confidentiality obligations no less protective than those in this Section 9.
+
+9.4. **Compelled disclosure.** Recipient may disclose Confidential Information to the extent required by law, court order, or regulatory authority, provided that, where legally permissible, it gives Discloser prompt notice and reasonable cooperation to seek a protective order or equivalent.
+
+9.5. **Term.** Confidentiality obligations under this Section 9 survive expiration or termination of this Agreement for **three (3) years**, except that obligations relating to information constituting trade secrets continue for as long as such information remains a trade secret under applicable law.
+
+---
+
+## 10. Compliance with Applicable Law
+
+10.1. **Partner regulatory posture.** Partner represents and warrants that, with respect to the Partner Service and any activity of the Partner Service that the Connector exposes to Glide Software instances, Partner holds and will maintain all licenses, registrations, and authorizations required by applicable law, including any required money-transmission licenses, banking partnerships, virtual-asset-service-provider registrations, or equivalents in the regions where Partner offers the Partner Service.
+
+10.2. **KYC/AML and sanctions.** Where the Connector exposes capabilities that touch fiat or stablecoin movement on or off the Partner Service (deposits, withdrawals, transfers, swaps, custody), Partner warrants that it operates a Know-Your-Customer / Anti-Money-Laundering program reasonably designed to comply with applicable law, including (a) registration with the Financial Crimes Enforcement Network (FinCEN) as a money services business, money transmitter, or other applicable status where required by 31 C.F.R. Chapter X, (b) state money-transmitter licensure (or qualifying bank-partnership coverage under applicable state laws) in U.S. states where Partner offers covered services to U.S. End Users, (c) sanctions screening against the Office of Foreign Assets Control (OFAC) Specially Designated Nationals list, and (d) equivalent registration, licensure, and screening obligations in the non-U.S. jurisdictions where Partner operates (including Financial Action Task Force-aligned regimes).
+
+10.3. **Glide is not a regulated party.** Partner acknowledges that Glide is a software vendor and not a money transmitter, bank, broker-dealer, virtual-asset-service-provider, or other regulated financial institution by virtue of distributing the Glide Software or maintaining the Marketplace. The Glide Software is the orchestration shell; regulated activity occurs at the Partner Service.
+
+10.4. **Operator responsibility.** Operators are responsible for their own compliance posture, including their relationships with Partner. Nothing in this Agreement makes Glide a party to those relationships.
+
+10.5. **Export controls.** Each Party will comply with applicable export-control and economic-sanctions laws of the United States and other jurisdictions where it operates, including the U.S. Export Administration Regulations and the regulations administered by OFAC. Neither Party will provide access to the rights granted under this Agreement to a person or entity (a) located in or ordinarily resident in a comprehensively sanctioned country or region, or (b) appearing on a denied-party or sanctioned-party list of a competent authority.
+
+10.6. **Data protection.** Where Partner processes personal data of End Users in connection with the Partner Service, Partner will comply with applicable data-protection laws, including the General Data Protection Regulation (EU) 2016/679 (GDPR), the United Kingdom General Data Protection Regulation as supplemented by the Data Protection Act 2018 (UK GDPR), the California Consumer Privacy Act of 2018 as amended by the California Privacy Rights Act of 2020 (CCPA/CPRA), and analogous comprehensive privacy statutes in other U.S. states (including Virginia, Colorado, Connecticut, Utah, and Texas) and other jurisdictions, in each case as applicable to Partner's processing. Glide does not, by virtue of this Agreement, exchange End User personal data with Partner; any such exchange occurs in the Operator-Partner relationship, not in the Glide-Partner relationship, and Operator-Partner data-processing addenda (where required) are negotiated separately between the Operator and Partner.
+
+---
+
+## 11. Term, Renewal, Termination, and Revocation of Verified Status
+
+11.1. **Term.** The initial term of this Agreement is **one (1) year** from the Effective Date (the "**Initial Term**"). The Agreement automatically renews for successive **one (1) year** terms (each a "**Renewal Term**" and, together with the Initial Term, the "**Term**") unless either Party gives written notice of non-renewal at least **60 days** before the end of the then-current term.
+
+11.2. **Termination for material breach.** Either Party may terminate this Agreement for the other Party's material breach if the breaching Party fails to cure within **30 days** after written notice describing the breach in reasonable detail.
+
+11.3. **Termination for insolvency or regulatory action.** Either Party may terminate this Agreement immediately on written notice if the other Party (a) becomes insolvent, files for bankruptcy, or has a petition filed against it that is not dismissed within 60 days; (b) makes an assignment for the benefit of creditors; or (c) receives a regulatory action that prohibits the other Party from performing material obligations under this Agreement.
+
+11.4. **Termination for convenience.** Either Party may terminate this Agreement for convenience on at least **60 days** prior written notice.
+
+11.5. **Revocation of Verified status (without termination).** In addition to its termination rights, Glide may revoke Verified-Tier status for the Connector ("**Revocation**") for cause, including (a) repeated or unremediated failure to meet the Code-Quality SLA, (b) malicious code or undisclosed telemetry in the Connector, (c) failure to respond to a Critical Incident within Section 7.2 timelines, or (d) regulatory action against Partner that materially impairs the Partner Service.
+
+(i) **Non-emergency Revocation.** Glide will give Partner at least **14 days'** prior written notice and a reasonable opportunity to cure where cure is feasible. If Partner cures within the notice period, Verified-Tier status will be retained.
+
+(ii) **Emergency Revocation.** Glide may revoke Verified-Tier status immediately, without prior notice, where Glide reasonably believes that immediate revocation is necessary to protect Operators or End Users from material harm (including active exploitation of a Critical vulnerability or confirmed presence of malicious code). Glide will provide written notice and a description of the basis as soon as practicable thereafter.
+
+(iii) **Effect of Revocation.** Following Revocation, the Connector reverts to `community` Trust Tier, with the standard red banner, and Partner Marks are removed from the live Marketplace per Section 5.4. Revocation does not, by itself, terminate this Agreement; the Agreement remains in effect for any obligations that survive Revocation (e.g., confidentiality, indemnity for events occurring during Verified-Tier status).
+
+11.6. **Survival.** The following Sections survive expiration or termination of this Agreement: 1 (Definitions), 3.1 (Connector code remains MIT), 3.2 (No chilling effect), 5.4 (final two sentences regarding historical artifacts and Partner Marks waiver), 9 (Confidentiality, for the term stated therein), 11.5(iii) (Effect of Revocation), 11.6 (Survival), 12 (Warranties and Disclaimers, with respect to events occurring during the Term), 13 (Indemnification, with respect to claims arising from events occurring during the Term), 14 (Limitation of Liability), 15 (Dispute Resolution and Governing Law), and 16 (General Provisions). Accrued payment and other obligations as of the effective date of expiration or termination also survive.
+
+---
+
+## 12. Warranties and Disclaimers
+
+12.1. **Mutual authority warranty.** Each Party represents and warrants to the other that (a) it has full power and authority to enter into and perform this Agreement, (b) execution and performance do not violate any other agreement to which it is bound, and (c) the individual signing on its behalf has authority to do so.
+
+12.2. **Partner warranties.** Partner represents and warrants that:
+
+(a) the Connector is functional in its declared capabilities at the Major Release covered by this Agreement, in all material respects;
+
+(b) the Partner Service is operated in compliance with applicable law in the regions declared in the Connector manifest, as further described in Section 10;
+
+(c) the Connector does not contain malicious code or undisclosed telemetry, as set out in Section 6.3; and
+
+(d) Partner owns or has sufficient rights in the Partner Marks to grant the license in Section 5.
+
+12.3. **Glide warranties.** Glide represents and warrants that:
+
+(a) the Verified Mark, when displayed by Glide for the Connector during the Term, is genuine, in the sense that (i) Glide has completed its then-current Verified-Tier review checklist for the Connector at the Major Release covered by this Agreement, (ii) two Glide reviewers (per CODEOWNERS) have signed off on the trust-tier promotion PR, and (iii) the executed Agreement and any required compliance acknowledgments are on file with Glide;
+
+(b) Glide owns or has sufficient rights in the Glide Marks to grant the license in Section 4; and
+
+(c) Glide will not, during the Term, knowingly distribute the Glide Software with a counterfeit or impersonating Marketplace Listing for the Connector.
+
+12.4. **Disclaimer.** EXCEPT FOR THE LIMITED WARRANTIES IN SECTIONS 12.1, 12.2, AND 12.3, THE GLIDE SOFTWARE, THE CONNECTOR, THE PARTNER SERVICE, THE MARKETPLACE, AND ALL OTHER MATERIALS PROVIDED UNDER THIS AGREEMENT ARE PROVIDED **"AS IS"** AND "AS AVAILABLE." EACH PARTY DISCLAIMS ALL OTHER WARRANTIES, EXPRESS OR IMPLIED, INCLUDING ANY IMPLIED WARRANTY OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, OR ARISING FROM COURSE OF DEALING OR USAGE OF TRADE. NEITHER PARTY WARRANTS UNINTERRUPTED OR ERROR-FREE OPERATION.
+
+---
+
+## 13. Indemnification
+
+13.1. **Partner indemnity.** Partner will defend, indemnify, and hold harmless Glide and its officers, directors, employees, and affiliates (the "**Glide Indemnitees**") from and against any third-party claim, action, demand, or proceeding (each, a "**Claim**"), and any resulting damages, settlements, fines, and reasonable attorney's fees and costs awarded by a court or paid in settlement, to the extent arising out of (a) Partner's breach of Section 6.3 (no malicious code), Section 10 (compliance), or Section 12.2 (Partner warranties); (b) infringement, misappropriation, or violation by the Connector or Partner Marks of any third-party intellectual property right (other than infringement caused by Glide's modifications to the Connector outside the contributions Partner submitted under Section 3.3); or (c) Partner Service activities that injure Operators or End Users.
+
+13.2. **Glide indemnity.** Glide will defend, indemnify, and hold harmless Partner and its officers, directors, employees, and affiliates (the "**Partner Indemnitees**") from and against any Claim, and any resulting damages, settlements, fines, and reasonable attorney's fees and costs awarded by a court or paid in settlement, to the extent arising out of (a) Glide's breach of Section 12.3 (Glide warranties); or (b) infringement, misappropriation, or violation by the Glide Marks (including the Verified Mark) of any third-party intellectual property right.
+
+13.3. **Procedure.** The indemnified Party will (a) give prompt written notice of the Claim, (b) grant the indemnifying Party sole control of defense and settlement (provided that no settlement requiring an admission of liability or imposing non-monetary obligations on the indemnified Party may be made without that Party's consent, not unreasonably withheld), and (c) provide reasonable cooperation at the indemnifying Party's expense.
+
+13.4. **Exclusive remedy for IP claims.** Sections 13.1(b) and 13.2(b) state each Party's sole liability and exclusive remedy for third-party intellectual-property infringement claims arising under this Agreement.
+
+13.5. **Mutual scope.** The Parties intend the indemnification obligations in this Section 13 to be substantively reciprocal in the categories of Claims each Party defends against.
+
+---
+
+## 14. Limitation of Liability
+
+14.1. **Exclusion of indirect damages.** TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, NEITHER PARTY WILL BE LIABLE TO THE OTHER FOR ANY CONSEQUENTIAL, INCIDENTAL, INDIRECT, SPECIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR ANY LOST PROFITS, LOST REVENUES, LOST DATA, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATING TO THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES, AND EVEN IF A LIMITED REMEDY HAS FAILED OF ITS ESSENTIAL PURPOSE.
+
+14.2. **Cap on direct damages.** EXCEPT AS SET OUT IN SECTION 14.3, EACH PARTY'S AGGREGATE LIABILITY TO THE OTHER, ARISING OUT OF OR RELATING TO THIS AGREEMENT, WILL NOT EXCEED THE GREATER OF:
+
+(a) THE TOTAL FEES PAID OR PAYABLE UNDER ANY SIDE LETTER REFERENCING THIS AGREEMENT IN THE TWELVE (12) MONTHS PRECEDING THE EVENT GIVING RISE TO LIABILITY; OR
+
+(b) **U.S. $5,000**, WHICH IS THE FLOOR THAT APPLIES (i) WHEN NO FEES HAVE BEEN PAID OR ARE PAYABLE BETWEEN THE PARTIES (THE NO-FEE VERIFIED TIER POSTURE DESCRIBED IN SECTION 2.4), OR (ii) WHEN FEES IN THE PRECEDING TWELVE MONTHS WERE LESS THAN U.S. $5,000.
+
+THIS CAP APPLIES SYMMETRICALLY TO BOTH PARTIES — GLIDE'S LIABILITY TO PARTNER AND PARTNER'S LIABILITY TO GLIDE ARE EACH SUBJECT TO THE SAME CAP, REGARDLESS OF WHICH PARTY IS THE PAYOR UNDER ANY SIDE LETTER. THE PARTIES INTEND THE LIABILITY CAP TO BE RECIPROCAL AND PROPORTIONATE TO THE NO-FEE OR LOW-FEE NATURE OF THE VERIFIED TIER PROGRAM.
+
+14.3. **Carve-outs.** The exclusions in Section 14.1 and the cap in Section 14.2 do not apply to:
+
+(a) breach of Section 9 (Confidentiality);
+(b) Partner's indemnification obligations under Section 13.1(a) (Section 6.3 malicious-code breach), Section 13.1(b) (IP infringement by the Connector or Partner Marks), or Section 13.1(c) (Partner Service activities);
+(c) Glide's indemnification obligations under Section 13.2(b) (IP infringement by Glide Marks);
+(d) a Party's gross negligence, willful misconduct, or fraud;
+(e) amounts owed under Section 10.5 (export controls) to the extent arising from violation of applicable law; or
+(f) any liability that cannot lawfully be limited or excluded under applicable law.
+
+14.4. **Equitable relief.** Notwithstanding any other provision, each Party retains the right to seek injunctive or other equitable relief in any competent court to prevent or restrain breach of Section 4 (Verified Mark license), Section 5 (Partner Marks license), Section 6.3 (no malicious code), or Section 9 (Confidentiality), without the requirement to post bond where permitted by law.
+
+14.5. **Allocation of risk.** The Parties acknowledge that the limitations and exclusions in this Section 14 reflect an informed allocation of risk and form an essential basis of the bargain, given that the Connector code is open-source and Marketplace placement is offered at no fee to regulated partners.
+
+---
+
+## 15. Dispute Resolution and Governing Law
+
+15.1. **Governing law.** This Agreement is governed by, and construed in accordance with, the laws of the State of Delaware, without regard to its conflict-of-laws principles. The U.N. Convention on Contracts for the International Sale of Goods does not apply.
+
+15.2. **Informal resolution first.** Before initiating any formal proceeding, the Parties will attempt in good faith to resolve any dispute by direct discussion between executives with authority to resolve the matter, for at least **30 days** after written notice of the dispute.
+
+15.3. **Arbitration.** If the Parties cannot resolve a dispute under Section 15.2, the dispute will be resolved by final, binding arbitration administered by JAMS in San Francisco, California, under the JAMS Comprehensive Arbitration Rules then in effect, before a single arbitrator. The seat of arbitration is San Francisco, California, and the language is English. Judgment on the award may be entered in any court of competent jurisdiction.
+
+15.4. **Carve-out for equitable relief.** Notwithstanding Section 15.3, either Party may seek temporary, preliminary, or permanent injunctive or other equitable relief in any state or federal court of competent jurisdiction, including the state and federal courts located in Delaware and California, to address (a) actual or threatened infringement, misappropriation, or violation of intellectual-property rights, (b) breach of Section 4 or 5 trademark licenses, (c) breach of Section 6.3 (no malicious code), or (d) breach of Section 9 (Confidentiality).
+
+15.5. **Class-action waiver.** The Parties waive any right to bring or participate in any class, collective, or representative action arising out of or relating to this Agreement. Each dispute will be resolved on an individual basis.
+
+15.6. **Attorney's fees.** In any proceeding under Section 15.3 or Section 15.4, the prevailing Party is entitled to recover its reasonable attorney's fees and costs from the non-prevailing Party, to the extent permitted by applicable law and the rules of the forum.
+
+15.7. **Statute of limitations.** Any claim arising out of or relating to this Agreement must be brought within two (2) years after the claim accrues, or be forever barred, except where applicable law prohibits a contractual shortening of the limitations period.
+
+---
+
+## 16. General Provisions
+
+16.1. **Operator and End Users not parties.** Operators and End Users are not parties to this Agreement and have no rights, claims, or causes of action under it. Operator and End User terms with Partner are governed by separate agreements between those parties; this Agreement does not create, modify, or supersede any such agreement. Nothing in this Agreement is intended to confer rights on third parties under Delaware's third-party-beneficiary rules or otherwise.
+
+16.2. **Independent contractors.** The Parties are independent contractors. Nothing in this Agreement creates a partnership, joint venture, agency, employment, or franchise relationship.
+
+16.3. **No third-party beneficiaries.** This Agreement is for the sole benefit of the Parties and their permitted successors and assigns, and confers no rights on any third party.
+
+16.4. **Force majeure.** Neither Party will be liable for delay or failure to perform (other than payment obligations) caused by circumstances beyond its reasonable control, including acts of God, war, terrorism, civil unrest, labor disputes, internet or telecommunications failures, governmental actions, public-health emergencies, and material failures of underlying cloud or infrastructure providers. The affected Party will notify the other promptly and resume performance as soon as reasonably practicable.
+
+16.5. **Assignment.** Neither Party may assign this Agreement without the other's prior written consent, not unreasonably withheld, except that either Party may assign this Agreement, on written notice and without consent, to (a) an affiliate under common control or (b) a successor in connection with a merger, reorganization, or sale of all or substantially all of its assets to which this Agreement relates, provided the assignee is not a competitor of the non-assigning Party in a manner that materially prejudices the non-assigning Party. Any prohibited assignment is void.
+
+16.6. **Notices.** Notices under this Agreement must be in writing and sent to the addresses in the Parties block, and copied to `legal@[GLIDE_NOTICE_DOMAIN]` (for Glide) and `[PARTNER_NOTICE_EMAIL]` (for Partner). Notice is deemed given on (a) personal delivery, (b) the second business day after deposit with a recognized overnight courier with tracking, or (c) confirmed email delivery (where this Agreement permits email notice). Each Party may update its notice details on written notice to the other.
+
+16.7. **Entire agreement; order of precedence.** This Agreement, together with any side letter expressly referencing it, is the entire agreement of the Parties with respect to the subject matter and supersedes all prior agreements, understandings, and communications on the same subject. In case of conflict, the side letter controls only as to the matters expressly addressed in it; this Agreement otherwise controls.
+
+16.8. **Amendment; waiver.** Any amendment must be in a writing signed by both Parties. A waiver must be in writing signed by the Party granting it; no waiver of one breach is a waiver of any other.
+
+16.9. **Severability.** If any provision of this Agreement is held unenforceable, the remainder remains in full force and effect, and the Parties will substitute an enforceable provision that most closely reflects the original intent.
+
+16.10. **Counterparts; electronic signatures.** This Agreement may be executed in counterparts, each of which is an original and which together constitute one instrument. Electronic signatures (including DocuSign, Adobe Sign, and similar services) are valid and binding.
+
+16.11. **Headings.** Headings are for convenience only and do not affect interpretation. The plural includes the singular and vice versa. "Including" means "including without limitation."
+
+16.12. **Construction.** This Agreement is the result of negotiation between the Parties, and no rule of construction against the drafter applies.
+
+16.13. **Order of definitions.** Where this Agreement defines a term in a section other than Section 1 (such terms cross-referenced in Section 1), the substantive definition in that other section controls.
+
+---
+
+## Signatures
+
+**Glide — Axtior, Inc.**
+
+Name: `[GLIDE SIGNATORY NAME]`
+Title: `[GLIDE SIGNATORY TITLE]`
+Date: `[GLIDE SIGNATURE DATE]`
+Signature: ************\_\_\_\_************
+
+**Partner — `[PARTNER LEGAL NAME]`**
+
+Name: `[PARTNER SIGNATORY NAME]`
+Title: `[PARTNER SIGNATORY TITLE]`
+Date: `[PARTNER SIGNATURE DATE]`
+Signature: ************\_\_\_\_************
+
+---
+
+## Schedule A — Connector Reference
+
+| Field                                  | Value                                                         |
+| -------------------------------------- | ------------------------------------------------------------- |
+| Connector Slug                         | `[CONNECTOR_SLUG]`                                            |
+| Connector Path                         | `packages/connectors/[CONNECTOR_SLUG]/`                       |
+| Major Release / Version Range          | `[CONNECTOR_VERSION_RANGE]`                                   |
+| Declared egress hosts                  | `[EGRESS_HOSTS]`                                              |
+| Declared regions                       | `[REGIONS]`                                                   |
+| Declared currencies                    | `[CURRENCIES]`                                                |
+| Partner technical contact              | `[PARTNER_TECH_CONTACT_NAME]`, `[PARTNER_TECH_CONTACT_EMAIL]` |
+| Partner security contact               | `[PARTNER_SEC_CONTACT_NAME]`, `[PARTNER_SEC_CONTACT_EMAIL]`   |
+| Partner legal/notice contact           | `[PARTNER_LEGAL_CONTACT_NAME]`, `[PARTNER_NOTICE_EMAIL]`      |
+| Glide review checklist completion date | `[GLIDE_CHECKLIST_DATE]`                                      |
+| Glide reviewers (2 required)           | `[GLIDE_REVIEWER_1]`, `[GLIDE_REVIEWER_2]`                    |
+
+## Schedule B — Side-Letter Slot (Commercial Extensions, if any)
+
+Reserved for an optional separately-executed side letter governing Glide-Cloud-only commercial extensions (review grants, sponsored placement, payout integrations). Absent a signed side letter, no fees flow under this Agreement and Section 14.2(b) governs the liability cap.
+
+---
+
+_End of Trusted Partner Agreement template — ready for counsel review._
+
