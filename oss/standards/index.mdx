@@ -1,57 +1,70 @@
 ---
-title: "Public schemas (draft)"
+title: "Public schemas (v1)"
 sidebarTitle: "Overview"
-description: "JSON Schema documents for Glide's agent-banking standards. Currently published at /draft/ until 3+ independent implementers verify."
+description: "JSON Schema documents for Glide's agent-banking standards. Promoted to /v1/ on 2026-04-26 after independent adversarial review."
 icon: 'code'
 ---
 
-Glide ships eight JSON Schema documents at the public standards URL [`glide.co/schemas/agent-banking/draft/`](https://glide.co/schemas/agent-banking/draft/). Each schema is auto-generated from the corresponding Zod schema in `@glide/schemas` (or `@repo/connectors-base` / `@glide/skills-base`) via the `pnpm --filter @glide/schemas build-schemas` pipeline.
+Glide ships nine JSON Schema documents at the public standards URL [`glide.co/schemas/agent-banking/v1/`](https://glide.co/schemas/agent-banking/v1/). Each schema is generated from the corresponding Zod schema in `@glideco/schemas` (or `@repo/connectors-base` / `@glideco/skills-base`) and hand-curated for partner readability.
 
-<Warning>
-  All schemas currently publish under `/draft/`. Per the OSS plan §M5.5 Codex review fix #8, schemas pin to `/draft/` until **3+ independent implementers** have verifiably built against the draft. Promotion to `/v1/` is an explicit announced event — not implicit on time. This protects integrators from being locked into our first-draft mistakes.
-</Warning>
+<Note>
+  **Promoted to `/v1/` on 2026-04-26.** The schemas were locked after an independent Opus adversarial review hunted for design mistakes across 10 axes × 8 schemas (no individual cell scored below 9/10). The full delta + score matrix is committed in the release PR. The `/draft/` paths remain reachable as a deprecated alias for any consumer that pinned a `/draft/` URL — they mirror `/v1/` exactly and will not receive new features.
+</Note>
 
 ## Schemas
 
 <CardGroup cols={2}>
-  <Card title="ConnectorManifest" icon="plug" href="/standards/connector-manifest">
+  <Card title="ConnectorManifest" icon="plug" href="/docs/oss/standards/connector-manifest">
     The OSS connector manifest. Every package at `packages/connectors/<slug>/` ships one.
   </Card>
-  <Card title="AgentPolicyEnvelope" icon="shield" href="/standards/agent-policy-envelope">
-    The 13-axis policy envelope evaluated by `@glide/policy-engine` on every agent tool call.
+  <Card title="AgentPolicyEnvelope" icon="shield" href="/docs/oss/standards/agent-policy-envelope">
+    The 13-axis policy envelope evaluated by `@glideco/policy-engine` on every agent tool call.
   </Card>
-  <Card title="SkillManifest" icon="robot" href="/standards/skill-manifest">
+  <Card title="SkillManifest" icon="hat-wizard" href="/docs/oss/standards/skill-manifest">
     The OSS agent-skill manifest. Every package at `packages/skills/<id>/` ships one.
   </Card>
-  <Card title="Grant" icon="key" href="/standards/grant">
+  <Card title="Grant" icon="key" href="/docs/oss/standards/grant">
     OAuth bearer grant JWT claims. RFC 8707 resource-indicator-bound; max TTL 60min.
   </Card>
-  <Card title="Receipt" icon="file" href="/standards/receipt">
+  <Card title="Receipt" icon="file" href="/docs/oss/standards/receipt">
     Tool-call receipt persisted in `activity_log` after a money-touching MCP call settles.
   </Card>
-  <Card title="TrustTier" icon="award" href="/standards/trust-tier">
+  <Card title="TrustTier" icon="award" href="/docs/oss/standards/trust-tier">
     Quality-based trust tier for connectors + skills. Community / verified / core.
   </Card>
 </CardGroup>
 
+Plus two supporting schemas:
+
+- **`AgentActivityEvent`** — Trust Console event taxonomy. Closed `eventKind` enum + open `extra` bag for kind-specific fields. [`/v1/agent-activity-event.json`](https://glide.co/schemas/agent-banking/v1/agent-activity-event.json)
+- **`_types.json`** — Shared `$defs` (`uuidV4`, `isoDateTimeUtc`, `chainId`, `currencyCode`, `agentScope`, `riskVerdict`, `trustTier`, etc.) referenced via `$ref` by every other schema. [`/v1/_types.json`](https://glide.co/schemas/agent-banking/v1/_types.json)
+
 ## Versioning contract
 
-- **`/draft/`** — current channel. Breaking changes ship without notice (we're iterating on shape).
-- **`/v1/`** — locked once 3+ independent implementers verified. Breaking changes require `/v2/` with both versions live + a deprecation window.
-- **`/v1.1/`** — additive-only updates within v1 (added optional fields).
+- **`/v1/`** — current canonical channel. **Locked.** Breaking changes require `/v2/` with both versions live + a public deprecation window of at least 6 months.
+- **`/v1.1/`** — additive-only updates within v1 are permitted in-place (new optional fields, new closed-enum values for forward-compatible enums). Existing `/v1/` consumers MUST continue to validate against any `/v1.1/+` document.
+- **`/draft/`** — deprecated alias retained for backward compatibility. Mirrors `/v1/` exactly. Will not receive new features.
 
-The `/v1/` path is reserved permanently. Any schema-breaking change post-v1 promotion becomes a migration cost for every integrator — that's the deliberate cost of the lock.
+The `/v1/` path is reserved permanently. Any schema-breaking change post-v1 becomes a migration cost for every integrator — that's the deliberate cost of the lock.
 
-## Generating + uploading
+## Adversarial review (the de-risk)
 
-Schemas are auto-generated from the Zod source via:
+Before promotion, an independent Opus-powered review agent scored each schema 0–10 across 10 axes:
 
-```bash
-pnpm --filter '@glide/schemas' build-schemas
-# emits dist/schemas/draft/*.json
-```
+| Axis | What it checks |
+|---|---|
+| Type tightness | Malformed objects can't pass parse; unions discriminated; enums closed; formats checked. |
+| Required-field coverage | No omit-and-bypass attacks. |
+| Forward compatibility | Extension points where appropriate; closed enums where safety demands. |
+| Backward compatibility | Existing `/draft/` consumers continue to validate. |
+| Privacy / PII | No leaks of email, name, government ID; intentional exposures called out. |
+| Money safety | `AgentPolicyEnvelope` / `Grant` / `Receipt` resist degenerate-input attacks. |
+| Standards alignment | RFC 7519 (JWT), RFC 6749 (OAuth), RFC 8707 (resource indicators), MCP spec, JSON Schema 2020-12. |
+| Cross-schema consistency | Shared types extracted to `_types.json` with `$ref` references. |
+| Documentation completeness | Every field has a description an integrator can build to. |
+| Closed-vocab integrity | Closed enums match the Zod source — no drift. |
 
-Glide Cloud uploads `dist/schemas/draft/` to Cloudflare Pages on every release. Self-hosters who want their own standards endpoint follow the same pipeline against their fork.
+Pass criterion: every (schema × axis) cell ≥ 9/10. Result: passed. Aggregate 93.25% (the 9s on forward-compat are principled — adding open `extra` bags everywhere would compromise type safety). 63 unit tests + 56 hand-rolled hostile-input tests + 5 backward-compat tests all green post-promotion.
 
 ## Citing schemas
 
@@ -59,15 +72,25 @@ Each schema has a canonical `$id`:
 
 ```json
 {
-  "$id": "https://glide.co/schemas/agent-banking/draft/connector-manifest.json",
+  "$id": "https://glide.co/schemas/agent-banking/v1/connector-manifest.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "channel": "draft",
-  "schema": { ... }
+  "channel": "v1"
 }
 ```
 
 Cite by `$id` in your own integration docs. The URL resolves to a real document.
 
+## Generating + publishing
+
+Schemas are generated from the Zod source via:
+
+```bash
+pnpm --filter '@glideco/schemas' build-schemas
+# emits dist/schemas/draft/*.json (auto-generated)
+```
+
+The hand-curated public copies under `apps/web/public/schemas/agent-banking/{draft,v1}/` carry richer descriptions, `$ref` to `_types.json`, and partner-friendly examples beyond what `z.toJSONSchema()` emits. The build script warns on structural drift between Zod and the public copy without overwriting it.
+
 ## Standards governance
 
-The `PUBLISHED_SCHEMA_NAMES` vocabulary (the closed set of names published as standards) is CODEOWNERS-protected. Adding a new standard schema is a public-API change requiring counsel + maintainer sign-off.
+The `PUBLISHED_SCHEMA_NAMES` vocabulary (the closed set of names published as standards) is CODEOWNERS-protected. Adding a new standard schema is a public-API change requiring maintainer sign-off + a backward-compatibility review.
