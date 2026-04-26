@@ -1,0 +1,130 @@
+---
+title: "@glideco/anomaly"
+description: "Heuristic anomaly detector + storm suppression + Sentry sink. OSS reference impl. No classifier, no ML — every signal is explainable."
+icon: "shield-exclamation"
+---
+
+OSS reference implementation of the anomaly detector documented in the
+Glide OSS plan §M4. Deterministic, explainable signals; no classifier,
+no ML; every heuristic is a pure function over a facts snapshot the
+operator passes in.
+
+## Install
+
+```bash
+npm install @glideco/anomaly
+```
+
+[npmjs.com/package/@glideco/anomaly](https://www.npmjs.com/package/@glideco/anomaly)
+
+## Why no ML?
+
+Per the OSS plan §"Critical architectural commitments":
+
+> Anomaly signals are heuristics, not a classifier.
+
+Signals are inputs to UI decision aids — the policy engine has the
+only hard veto. Heuristics are explainable, version-controllable,
+testable in isolation, and don't drift between training runs. ML is
+the wrong tool for the "why did this fire" review surface.
+
+## Built-in heuristics
+
+| Heuristic                      | Default severity                | What it catches                      |
+| ------------------------------ | ------------------------------- | ------------------------------------ |
+| `newRecipientHeuristic`        | `notice`                        | First payment to a counterparty      |
+| `makeAmountDeviationHeuristic` | `warn` at 3×, `critical` at 10× | Amounts well above baseline median   |
+| `makeVelocityHeuristic`        | `warn` at 2×, `critical` at 5×  | Burst of tool calls                  |
+| `allowlistBypassHeuristic`     | `critical`                      | Attempt to pay outside the allowlist |
+| `timeWindowHeuristic`          | `warn`                          | Transactions outside business hours  |
+
+## Storm suppression
+
+A burst of similar signals (e.g., 50 "new-recipient" events in 60
+seconds during a payroll batch) should NOT fan out as 50 push
+notifications. The suppressor returns at most `maxPerWindow` signals
+per `(kind, agentId)` per `windowMs`; overflow signals are still
+recorded — caller's choice what to do with them (typically routed to
+an in-app aggregated feed).
+
+```ts
+import { StormSuppressor } from '@glideco/anomaly';
+
+const suppressor = new StormSuppressor({
+  maxPerWindow: 1,
+  windowMs: 60 * 60 * 1000, // 1 hour
+});
+
+const decision = suppressor.shouldPush(signal, agentId);
+// → { pass: true } | { pass: false, reason: 'storm-suppressed', overflowCount: N }
+```
+
+## Sentry sink
+
+Optional adapter that routes signals to Sentry as messages tagged with
+severity + kind. The Sentry instance is operator-supplied so the
+package doesn't take a hard dependency on `@sentry/nextjs` (any object
+with `captureMessage()` works — `@sentry/node`, Glitchtip, custom shims).
+
+```ts
+import * as Sentry from '@sentry/nextjs';
+import { makeSentrySink } from '@glideco/anomaly';
+
+const sink = makeSentrySink({ Sentry, project: 'glide-prod' });
+
+for (const signal of signals) {
+  const decision = suppressor.shouldPush(signal, agentId);
+  if (decision.pass) {
+    sink.emit(signal, agentId);
+  } else {
+    appendToInAppFeed(signal); // overflow goes here
+  }
+}
+```
+
+Severity mapping:
+
+| Anomaly severity | Sentry level |
+|------------------|--------------|
+| `info`, `notice` | `info`       |
+| `warn`           | `warning`    |
+| `critical`       | `error`      |
+
+Failures emitting to Sentry never bubble — the sink swallows them so a
+Sentry outage can't break the calling pipeline.
+
+## Adding your own heuristic
+
+Heuristics are just `(ctx) => signals[]`. Wire one for your domain:
+
+```ts
+import { Heuristic } from '@glideco/anomaly';
+
+interface CrossBorderFacts {
+  recipientCountry: string;
+  agentHomeCountry: string;
+}
+
+export const crossBorderHeuristic: Heuristic<CrossBorderFacts> = (ctx) => {
+  if (ctx.facts.recipientCountry === ctx.facts.agentHomeCountry) {
+    return [];
+  }
+  return [
+    {
+      kind: 'cross-border',
+      severity: 'notice',
+      message: `Payment to ${ctx.facts.recipientCountry} (agent home: ${ctx.facts.agentHomeCountry})`,
+      details: ctx.facts,
+      timestamp: ctx.now,
+    },
+  ];
+};
+```
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) —
+  the F-rules every money-touching path observes.
+- [Receipt schema](/docs/oss/standards/receipt) — what gets logged
+  alongside each anomaly signal.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/anomaly)

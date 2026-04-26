@@ -1,0 +1,129 @@
+---
+title: "@glideco/explainer"
+description: "LLM narrator for activity_log rows. Schema-bound I/O contract. Ships feature-flagged off until n≥500 golden-set eval green."
+icon: "comment-dots"
+---
+
+LLM narrator that turns structured `activity_log` rows into plain-English
+summaries for finance + compliance reviewers. Per the OSS plan §M4:
+**ships feature-flagged off** until the operator runs an n≥500 golden-set
+eval with Wilson 95% upper bound ≤ 1% misrepresent rate.
+
+## Install
+
+```bash
+npm install @glideco/explainer
+```
+
+[npmjs.com/package/@glideco/explainer](https://www.npmjs.com/package/@glideco/explainer)
+
+## Why feature-flagged
+
+Activity feed narratives go to compliance reviewers who'll act on what
+they read. An LLM that misrepresents a single risk verdict — calls a
+'flag' a 'pass' or vice versa — burns trust in the entire system. The
+golden-set eval gate makes the package hard to enable carelessly:
+
+> n ≥ 500 labeled examples · Wilson 95% upper bound on misrepresent rate ≤ 1%
+
+Until your eval harness clears, operators get the structured-chips view
+(rendered from the `observations[]` field; no LLM-narrated `summary`).
+
+## I/O contract
+
+Every input is a shape the LLM can faithfully narrate; every output is
+a shape the UI can deterministically render. Both Zod-validated.
+
+```ts
+interface ExplainerInput {
+  toolCall: {
+    id: string;
+    toolName: string;
+    agentDisplayName: string;
+    timestampISO: string;
+    amountUsdCents: number | null;
+    counterpartyLabel: string | null;
+    riskVerdict: 'pass' | 'flag' | 'block' | null;
+  };
+  envelope: {
+    perTxCapUsdCents: number | null;
+    dailyCapUsdCents: number | null;
+    stepUpAmountUsdCents: number | null;
+  };
+  recentHistory: Array<{ /* ... */ }>;
+  policyVersion: number;
+}
+
+interface ExplainerOutput {
+  summary: string;
+  detail?: string;
+  observations: Array<{
+    kind:
+      | 'within-caps' | 'near-per-tx-cap' | 'near-daily-cap'
+      | 'over-step-up' | 'novel-counterparty' | 'velocity-spike'
+      | 'risk-flag' | 'risk-block';
+    detail: string;
+  }>;
+  confidence: number;
+}
+```
+
+The closed `observations.kind` vocabulary is intentional — the UI
+chip-renderer is a switch on those keys. New kinds require schema
+update + UI render path update.
+
+## Wiring
+
+The package is LLM-agnostic. Operators bring their own client.
+
+```ts
+import Anthropic from '@anthropic-ai/sdk';
+import {
+  buildPrompt,
+  ExplainerInputSchema,
+  ExplainerOutputSchema,
+} from '@glideco/explainer';
+
+const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+async function explain(input) {
+  const validated = ExplainerInputSchema.parse(input);
+  const { system, user } = buildPrompt(validated);
+  const res = await claude.messages.create({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 1024,
+    system,
+    messages: [{ role: 'user', content: user }],
+  });
+  const text = res.content
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+  return ExplainerOutputSchema.parse(JSON.parse(text));
+}
+```
+
+## Eval harness
+
+Build a golden set of 500+ labeled `(input, expected_summary)` pairs
+covering every `riskVerdict` × envelope-axis combination plus
+adversarial inputs (prompt-injection attempts in counterparty labels,
+contradictory history entries, etc.).
+
+For each input, run the explainer + compare claims against ground truth.
+A "misrepresent" is any output that:
+
+1. Contradicts a present field (e.g. claims 'pass' when input was 'block').
+2. Invents a field not in the input.
+
+Compute the rate with Wilson confidence interval (not naive proportion).
+Ship only when 95% upper bound ≤ 1%.
+
+Sample low-confidence runtime outputs to expand the golden set
+continuously.
+
+## Reading list
+
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/explainer)
+- [`@glideco/anomaly`](/docs/oss/packages/anomaly) — heuristic signals
+  the explainer narrates.

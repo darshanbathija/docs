@@ -157,7 +157,15 @@
             "pages": [
               "oss/concepts/orchestration-shell",
               "oss/concepts/hosted-vs-self-hosted",
-              "oss/concepts/money-safety-contracts"
+              "oss/concepts/money-safety-contracts",
+              "oss/concepts/retention-tiers"
+            ]
+          },
+          {
+            "group": "Packages",
+            "pages": [
+              "oss/packages/anomaly",
+              "oss/packages/explainer"
             ]
           },
           {

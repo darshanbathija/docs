@@ -1,0 +1,72 @@
+---
+title: "Retention tiers"
+description: "How activity_log rows age across Hot, Warm, Cold, and Regulatory tiers. Per-entity policy. Nightly Inngest sweep."
+icon: "clock-rotate-left"
+---
+
+Activity log rows accumulate; storage costs grow linearly with traffic.
+Glide OSS organizes rows into four retention tiers per OSS plan §M4,
+configurable per entity:
+
+| Tier         | Default age window     | Storage           | Read latency | Default state |
+|--------------|------------------------|-------------------|--------------|---------------|
+| Hot          | 0–7 days               | Postgres          | <10 ms       | always on     |
+| Warm         | 7–90 days              | Compressed storage| <100 ms      | always on     |
+| Cold         | 90 days–1 year         | S3 archive        | seconds      | always on     |
+| Regulatory   | 1–7 years              | S3 deep archive   | hours        | **off**       |
+
+The OSS plan rationale: most operators don't need the regulatory tier;
+turning it on commits to a multi-year retention obligation that's
+expensive + GDPR-tense (longer retention = more rows the user can
+demand redaction on). The default is off; operators in jurisdictions
+that require it (US FinCEN, EU AMLD) flip it on per entity.
+
+## How it works
+
+A nightly Inngest cron (`retention-tier-sweep`) runs at 03:00 UTC.
+For each entity:
+
+1. Look up `retention_tier_config` for the entity (use defaults if absent).
+2. Count rows in each tier band (Hot/Warm/Cold/Regulatory).
+3. Mark transitions as the rows age across the day-thresholds.
+4. Update `last_*_sweep_at` timestamps on the config.
+
+Transitions today are best-effort flagging only — the full TimescaleDB
+compression + S3 Glacier archival pipeline lands in v1.5. The cron
+schedule + the config table are stable; the storage backend swaps
+behind them.
+
+## Configuring per entity
+
+Admins use the `/admin/retention` UI:
+
+```
+Hot tier (days)              [  7 ]
+Warm tier (days)             [ 90 ]
+Cold tier (days)             [365 ]
+Regulatory tier (days)       [2555]    [ ] Enable regulatory tier
+Notes                        [        ]
+```
+
+The values are validated server-side: `hot < warm < cold` is required;
+`regulatory > cold` if `regulatoryEnabled = true`. The UI shows the
+last sweep timestamps as a freshness indicator.
+
+## DSAR + retention interaction
+
+Retention tiers extend the *upper* bound of how long rows stick around.
+The DSAR redaction workflow (`/admin/dsar`) is the *lower* bound — a
+right-to-redaction request can flag fields as `[REDACTED]` regardless
+of which tier the row is in. The append-only-trigger pattern guarantees
+the row's existence stays for audit-log integrity even after redaction.
+
+See [DSAR redaction workflow](/docs/oss/concepts/money-safety-contracts)
+for the full picture.
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) —
+  the F-rules around append-only `activity_log`.
+- [Receipt schema](/docs/oss/standards/receipt) — what's in each row.
+- Source: `apps/web/drizzle/0048_retention_tier_config.sql` +
+  `apps/web/src/inngest/functions/retention-tier-sweep.ts`.
