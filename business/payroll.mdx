@@ -1,0 +1,79 @@
+---
+title: "Stablecoin payroll"
+description: "Pay your distributed team in USDC across 80+ corridors. Same UX as fiat payroll; better economics for global teams."
+icon: "money-bill-trend-up"
+---
+
+If you have a distributed team across multiple countries, traditional payroll providers either don't serve every corridor you need or layer 3&ndash;5% in FX margin on every payment. Glide's stablecoin payroll lets you pay everyone in USDC, with optional auto-convert to local fiat at the recipient's end.
+
+## How it works
+
+You set up a payroll run the way you would with any payroll provider:
+
+- Add team members with their preferred receiving method (USDC wallet, Glide account, local bank).
+- Enter amounts and cadence (monthly, semi-monthly, weekly).
+- Glide computes the run, shows you the total, and queues it.
+
+On payday, Glide:
+
+1. Settles each payment via the rail the recipient picked.
+2. For USDC recipients, broadcasts on the chain they specified.
+3. For Glide-account recipients, internal transfer (instant, free).
+4. For local-bank recipients, runs the FX at mid-market and broadcasts via the local rail.
+
+The run completes in under a minute for typical sizes (50&ndash;500 employees).
+
+## What recipients see
+
+- **USDC wallet recipient** &mdash; USDC lands in their wallet. No KYC on the recipient side; they're just receiving an on-chain transfer.
+- **Glide account recipient** &mdash; the recipient sees the transfer in their Glide dashboard. They can hold USDC or convert it to any fiat they prefer.
+- **Local bank recipient** &mdash; standard bank transfer with a normal-looking sender (your entity name + the payroll reference). Settles via the local rail (ACH, SEPA, Faster Payments, etc.).
+
+## Why this is cheaper than traditional payroll
+
+Traditional global payroll often involves:
+
+- Glide-side FX margin (1&ndash;2%).
+- Sender-bank wire fees ($25&ndash;$50 per international wire).
+- Intermediary-bank deductions on SWIFT (~$15&ndash;$30 per hop).
+- Recipient-bank receiving fees (varies).
+
+For a $5,000 payment to a contractor in the Philippines via traditional rails, the total cost can hit $200&ndash;$400.
+
+For the same payment via USDC on Polygon: ~$0.05 in network gas, zero spread on FX. The contractor gets effectively the full amount.
+
+For the same payment via traditional rails on Glide: zero spread on FX, a published flat fee. Total cost is in the single-digit dollars for most corridors.
+
+## Failover and vendor diversity
+
+Glide's payroll engine has multi-rail failover. If a primary rail fails for some reason (e.g., a corridor's local rail has an outage), the run automatically retries via a fallback rail (typically SWIFT or a stablecoin route). The recipient still gets paid; you don't have to chase support.
+
+## Tax handling
+
+Glide doesn't withhold or remit taxes &mdash; that's between you and the relevant tax authorities. For US W-2 employees, you'll still want a US payroll provider; Glide is well-suited for **contractor payments** and **non-US team members** where tax handling is the recipient's responsibility.
+
+For complex tax situations (e.g., you need a payroll provider that handles benefits administration), you can layer Glide as the payment-execution rail under a tax-handling provider. Talk to your relationship manager.
+
+## Approval flow
+
+Payroll runs above the entity's threshold trigger multi-approval. Default: any run above the entity's monthly approval threshold requires Finance + Admin approval. Override at **Settings &rarr; Approvals**.
+
+## Reporting
+
+Every payroll run generates:
+
+- A summary CSV with each line item.
+- A PDF report suitable for accountants.
+- An audit trail in your activity feed (every individual payment, every fee, every conversion).
+
+Pull these from **Payroll &rarr; History** at any time. Year-end reports are available in January for the prior calendar year.
+
+## Cadence
+
+Most teams run monthly or semi-monthly. Glide supports daily payroll if your operation needs it (e.g., daily-pay creator economy, daily settlement to gig contractors). The engine itself doesn't have a cadence ceiling.
+
+## Next
+
+- [Vendor payments](/business/vendor-payments)
+- [Treasury](/business/treasury)
+- [Stablecoin overview](/stablecoins/overview)

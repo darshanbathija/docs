@@ -1,85 +1,66 @@
 ---
-title: "90-second quickstart"
+title: "Open your account in 10 minutes"
 sidebarTitle: "Quickstart"
-description: "From `git clone` to `localhost:3000/health → 200` in under 90 seconds. Zero vendor signups required."
-icon: 'rocket'
+description: "Sign up, verify your identity, fund your account, and get a card. Most people are done in under ten minutes."
+icon: "rocket"
 ---
 
-The Champion-tier quickstart from the OSS Cathedral M3 plan. From a fresh machine with Docker + Node 22 + pnpm installed:
+You can open a Glide account from any country. There are no minimum deposits and no monthly fees. The whole flow runs in one screen on web or mobile.
 
 <Steps>
-  <Step title="Clone + install">
-    ```bash
-    git clone https://github.com/darshanbathija/axtior-neobank.git
-    cd axtior-neobank
-    pnpm install
-    ```
+  <Step title="Sign up">
+    Head to [glide.co](https://glide.co) and tap **Open Your Account**. Sign in with email or a passkey. Choose **Personal** if it's for you, or **Business** if you're opening for a company.
   </Step>
-  <Step title="Boot the data layer">
-    ```bash
-    docker compose up -d
-    ```
+  <Step title="Verify your identity">
+    We need a few details to comply with KYC/AML rules in the five jurisdictions Glide is regulated in.
 
-    Brings up Postgres 16 on `localhost:5435`, Redis 7 on `localhost:6381`, Inngest dev on `localhost:8288`.
-  </Step>
-  <Step title="Generate dev-only keys">
-    ```bash
-    bash scripts/generate-keys.sh > .env.keys
-    cat .env.keys >> apps/web/.env.local
-    ```
+    <Tip>
+      Have a passport or government-issued ID handy plus a phone with a working camera. The doc check + selfie takes about three minutes.
+    </Tip>
 
-    <Warning>
-      `scripts/generate-keys.sh` emits **dev-only random placeholders** for the JWT secret, webhook secret, and four operational keys. Regenerate with KMS-backed values for production.
-    </Warning>
+    See [KYC and AML](/security/kyc-aml) for what gets checked and how long it's stored.
   </Step>
-  <Step title="Add Privy creds (the one required vendor)">
-    Sign up at [privy.io](https://privy.io), create a Multi-tenant tenant, copy the App ID + App Secret into `apps/web/.env.local`:
+  <Step title="Fund your account">
+    Two paths, both work from day one:
 
-    ```env
-    NEXT_PUBLIC_PRIVY_APP_ID=clxxxxxxxxxxxxxx
-    PRIVY_APP_SECRET=xxxxxxxxxxxxxxxxxxxx
-    ```
-  </Step>
-  <Step title="Apply migrations">
-    ```bash
-    bash scripts/run-agent-platform-migrations.sh
-    ```
-  </Step>
-  <Step title="Boot in demo mode">
-    ```bash
-    GLIDE_USE_MOCK_CONNECTORS=true pnpm --filter web dev
-    ```
-  </Step>
-  <Step title="Verify">
-    ```bash
-    curl http://localhost:3000/health
-    # → {"status":"ok"}
+    - **Stablecoin deposit** &mdash; copy your USDC or USDT deposit address, send from any wallet, settled in seconds. No KYC step required for crypto deposits.
+    - **Bank wire** &mdash; once KYC clears, you'll get account details in CAD, USD, GBP, EUR, SGD, HKD, AUD, and more. Wire from your existing bank.
 
-    pnpm glide doctor
-    # all checks pass
-    ```
+    Both paths are documented in [Deposits](/money/deposits).
+  </Step>
+  <Step title="Get a card">
+    Order a virtual Visa card instantly. Add it to Apple Pay or Google Pay. Tap to pay anywhere Visa is accepted, in any of 80+ currencies.
+
+    A physical card ships in 5&ndash;10 business days. See [Cards](/cards/overview).
+  </Step>
+  <Step title="Start moving money">
+    Send to 180 countries via wire, ACH, SEPA, Faster Payments, SWIFT, or stablecoin transfer. Pricing is published up front; you see the fee before you confirm.
+
+    See [Send money](/money/send).
   </Step>
 </Steps>
 
-## Alternative: `npx create-glide-app`
+## What you get on day one
 
-```bash
-npx create-glide-app my-bank
-cd my-bank
-docker compose up -d
-# follow my-bank/README.md for the rest
-```
-
-The scaffolder writes a minimal starter (`docker-compose.yml`, `.env.example`, README) that orchestrates the data layer + directs you to `pnpm glide demo` for full bring-up.
-
-## What's mocked in demo mode
-
-`GLIDE_USE_MOCK_CONNECTORS=true` swaps every connector for its sandbox variant. **No real Bridge / Noah / Chainalysis / Alchemy keys required.** The fail-closed audit refuses production `NODE_ENV` unless `GLIDE_ALLOW_MOCKS_IN_PROD=true` is explicitly set.
-
-For a production-shaped stack with real vendors, see [Self-host guide](/self-hosting).
+<CardGroup cols={2}>
+  <Card title="Multi-currency account" icon="globe" href="/accounts/overview">
+    Hold and receive in 80+ currencies, each with its own local account details.
+  </Card>
+  <Card title="Visa Signature card" icon="credit-card" href="/cards/overview">
+    Spend anywhere Visa is accepted. No foreign transaction fees from Glide.
+  </Card>
+  <Card title="Stablecoin rails" icon="link" href="/stablecoins/overview">
+    Deposit USDC, USDT, and more across Ethereum, Solana, Base, Polygon.
+  </Card>
+  <Card title="Real-rate FX" icon="arrow-right-arrow-left" href="/money/fx">
+    Convert between currencies at the live mid-market rate, zero spread from Glide.
+  </Card>
+</CardGroup>
 
 ## Next
 
-- [Self-host guide](/self-hosting) — production env posture + deploy targets.
-- [Hosted vs self-hosted](/concepts/hosted-vs-self-hosted) — the parity commitment.
-- [Agent platform quickstart](/agents/index) — spin up `apps/mcp` for agent banking.
+- [Eligibility](/eligibility) &mdash; who can open an account, what countries we serve.
+- [Account types](/accounts/personal-vs-business) &mdash; personal vs business setup.
+- [Pricing](https://glide.co/pricing) &mdash; opening fees, FX, and transfer costs.
+
+Need a hand? Email [hi@glide.co](mailto:hi@glide.co) or use the in-app chat.

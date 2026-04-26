@@ -1,0 +1,86 @@
+---
+title: "Deposits"
+description: "Add money to your account via stablecoin transfer or bank wire. Deposits land in seconds (crypto) or minutes (local rails)."
+icon: "arrow-down-to-line"
+---
+
+Glide accepts deposits two ways: stablecoin transfers and traditional bank rails. Crypto works pre-KYC; bank rails activate once your identity is verified.
+
+## Deposit a stablecoin
+
+USDC and USDT settle in seconds and require no KYC.
+
+<Steps>
+  <Step title="Open the deposit screen">
+    From your dashboard, tap **Deposit &rarr; From crypto wallet**.
+  </Step>
+  <Step title="Pick the network">
+    Choose Ethereum, Solana, Base, or Polygon (full list in [supported networks](/stablecoins/supported-networks)). The network determines the address you'll send to and the gas cost.
+  </Step>
+  <Step title="Copy your deposit address">
+    Glide generates a deposit address unique to your account. Copy it, or scan the QR code from your wallet app.
+
+    <Warning>
+      Send only the asset and network shown. Sending a different asset to this address may result in permanent loss; sending on the wrong network can take days to recover (and may not be recoverable on some chains).
+    </Warning>
+  </Step>
+  <Step title="Confirm in your wallet">
+    Initiate the transfer from your wallet. Watch the dashboard; the deposit shows as pending immediately and clears after on-chain confirmations (USDC on Solana confirms in &lt;5s; USDC on Ethereum mainnet takes ~1&ndash;3 minutes).
+  </Step>
+</Steps>
+
+## Deposit fiat by bank wire
+
+Once your KYC clears, you'll see local account details for every named-account currency you've activated.
+
+<Steps>
+  <Step title="Get your account details">
+    From the dashboard, tap **Deposit &rarr; From bank account &rarr; pick a currency**. We'll show you account number, sort code or routing number, IBAN, BIC, and the recipient name to use on the wire.
+  </Step>
+  <Step title="Wire from your existing bank">
+    Send the wire from your bank using the details we showed you. Glide is the recipient name; the funds land in your account.
+  </Step>
+  <Step title="Wait for settlement">
+    Settlement times vary by rail:
+
+    - **SEPA Instant** &mdash; under 10 seconds.
+    - **Faster Payments (UK)** &mdash; under 2 hours, often instant.
+    - **ACH push** &mdash; same business day.
+    - **SWIFT wire** &mdash; same to next business day, depending on the originating bank.
+
+    You'll get a push notification when the deposit clears.
+  </Step>
+</Steps>
+
+## Receiving payments from someone else
+
+Same flow as your own deposit. Share your account details (or a payment link) with the sender. They wire to those details; the funds land in your Glide account.
+
+For a clean handoff, generate a **named payment link** in **Deposit &rarr; Request money**. Each link tracks the expected amount, the sender, and the invoice reference, so reconciliation is automatic.
+
+## Deposit fees
+
+| Source                | Fee from Glide                   |
+| --------------------- | -------------------------------- |
+| Stablecoin (any chain) | None &mdash; you only pay network gas |
+| Wire / ACH / SEPA / Faster Payments | None on the receive side    |
+| SWIFT (intermediary banks) | Glide doesn't charge; intermediary banks may deduct |
+
+Full pricing at [glide.co/pricing](https://glide.co/pricing).
+
+## Limits
+
+Deposit limits depend on your KYC tier and account type:
+
+- **Pre-KYC (crypto-only)** &mdash; up to $10,000 lifetime stablecoin deposits.
+- **Standard KYC personal** &mdash; $50,000 per transaction, $500,000 monthly.
+- **Enhanced KYC personal** &mdash; uncapped per-transaction, monthly limits sized to declared activity.
+- **Business** &mdash; sized to declared volume; talk to your relationship manager.
+
+You can request a limit increase at any time from **Settings &rarr; Limits**.
+
+## Next
+
+- [Send money](/money/send)
+- [Stablecoins overview](/stablecoins/overview)
+- [Limits and fees](/money/limits-and-fees)

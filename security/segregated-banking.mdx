@@ -1,0 +1,69 @@
+---
+title: "Segregated banking"
+description: "Customer funds are held 1:1 in segregated accounts at major regulated banking partners. Not pooled, not lent, not part of Glide's balance sheet."
+icon: "vault"
+---
+
+Most fintechs hold customer money pooled in their corporate accounts and use it as working capital. That arrangement makes the customer an unsecured creditor in any insolvency event &mdash; meaning if the fintech goes under, you have a claim on Glide-the-company's assets, not on your specific funds.
+
+Glide doesn't work that way.
+
+## How it actually works
+
+For every $X you hold in your Glide account:
+
+1. **At Glide's banking partners** &mdash; $X sits in a **client-money segregated account** at a major regulated bank in the relevant jurisdiction. The account is legally structured as customer funds, not Glide funds. Glide cannot use this money as collateral, working capital, or for any other purpose.
+2. **In our books** &mdash; we record it as a customer liability (we owe it to you), with a matched asset (the segregated bank balance representing your share). The two sides reconcile in real time.
+3. **In your dashboard** &mdash; your displayed balance is your claim on the segregated reserve. The number is enforced against the bank's actual balance, continuously.
+
+For stablecoins, the structure is parallel:
+
+1. Either the underlying tokens sit in **dedicated on-chain custody** (your USDC is your USDC, in a Glide-managed but customer-attributed wallet structure), or in **stablecoin reserve segregated accounts** at our banking partners.
+2. Reconciliation runs continuously between on-chain state and your dashboard balance.
+
+## What "1:1" means
+
+For every dollar you see in your dashboard, there is a matching dollar at the banking partner attributed to your account. Not a fractional reserve. Not a pool with reconciliation latency. 1:1, continuously matched.
+
+If the dashboard ever shows a balance that doesn't match the underlying segregated reserve, the dashboard is wrong (and we'd notice in seconds via reconciliation alarms, fix it, and notify the affected accounts).
+
+## Banking partners
+
+Glide's regulatory model spans five jurisdictions, each with its own licensed banking partner relationship:
+
+- **Canada** &mdash; FINTRAC-registered MSB, partner relationship with a major Canadian Schedule I bank.
+- **United Kingdom** &mdash; FCA-authorized partner relationships under the Electronic Money Regulations.
+- **European Union** &mdash; partner relationships under PSD2 / EMI authorizations.
+- **Hong Kong** &mdash; SVF-licensed partner relationships under the HKMA framework.
+- **Singapore** &mdash; MAS-licensed partner relationships under the Payment Services Act.
+
+The specific partner names are disclosed on request to current customers and to regulators. We don't post them publicly because (a) they're commercially sensitive and (b) the partner names can shift over time as we add corridors and rebalance for redundancy. The partner *type* (regulated, jurisdiction-equivalent insured, segregated-account-capable) is the durable promise.
+
+## What we don't do with your money
+
+- **We don't lend it.** Customer balances aren't loaned to other Glide customers, third parties, or back to ourselves. There is no Glide credit business that touches customer deposits.
+- **We don't invest it.** Customer balances aren't allocated to yield strategies on our own. The optional treasury yield product (Q2 2026) is opt-in and operates via separate, customer-attributed allocations.
+- **We don't pledge it.** Customer balances aren't used as collateral for any Glide corporate financing.
+- **We don't hold it offshore for tax purposes.** Funds are held in the jurisdiction matching your account's region, not routed through tax-optimized intermediaries.
+
+## What insolvency would mean
+
+If Glide ever had a corporate-level insolvency event:
+
+- Customer funds held at segregated banking partners are **not part of Glide's bankruptcy estate**. They belong to customers via the partner relationship. A court-supervised distribution would return them to customers without depending on Glide's recovery.
+- Customer stablecoin balances held in on-chain custody **don't depend on Glide existing** &mdash; the on-chain wallet structure is recoverable independently.
+- In-flight transactions in Glide's processing layer at the moment of an insolvency event would be handled per the terms of service. Most rails settle within hours; the in-flight window is small.
+
+This isn't speculation. It's structured into our operating agreements with each banking partner and required by our regulators as a condition of MSB licensing.
+
+## How to verify
+
+- Your relationship manager can walk you through the segregation structure for your specific entity and jurisdiction.
+- Our SOC 2 Type 2 report includes the segregation control's attestation.
+- Annual regulatory filings in each jurisdiction include segregation-related attestations.
+
+## Next
+
+- [Regulatory](/security/regulatory)
+- [KYC and AML](/security/kyc-aml)
+- [Stablecoins overview](/stablecoins/overview)

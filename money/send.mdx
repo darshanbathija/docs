@@ -1,0 +1,90 @@
+---
+title: "Send money"
+description: "Send to 180 countries via wire, ACH, SEPA, Faster Payments, SWIFT, or stablecoin transfer. See the fee before you confirm."
+icon: "arrow-up-from-line"
+---
+
+Glide sends money via traditional banking rails and stablecoin networks. Both run from one screen; pick the rail that's fastest and cheapest for the corridor you need.
+
+## Send to a bank account
+
+<Steps>
+  <Step title="Open the send screen">
+    From the dashboard, tap **Send &rarr; To bank account**.
+  </Step>
+  <Step title="Pick the recipient">
+    Either a saved beneficiary, a new beneficiary, or a phone-book contact. For a new beneficiary, enter their name (matching their bank), account details, and country.
+  </Step>
+  <Step title="Pick the rail">
+    Glide auto-suggests the cheapest rail for the corridor. You can override:
+
+    - **Same-currency local rails** &mdash; ACH, SEPA, Faster Payments, FAST, FPS, NPP. Usually under 2 hours, often instant. Lowest fees.
+    - **Cross-border SWIFT** &mdash; correspondent banking. 1&ndash;3 business days typical. Higher fees, intermediary banks may deduct.
+    - **Card-to-card** &mdash; some corridors only. Real-time, higher fee.
+  </Step>
+  <Step title="See the quote">
+    Before you confirm, you see:
+
+    - The exact fee from Glide.
+    - The mid-market FX rate (zero spread from us).
+    - The estimated arrival time for the chosen rail.
+    - The total amount the recipient will receive.
+
+    No surprise deductions on our side.
+  </Step>
+  <Step title="Confirm">
+    Approve with Face ID, passkey, or your two-factor method. The transfer initiates immediately; you'll get a receipt.
+  </Step>
+</Steps>
+
+## Send a stablecoin
+
+USDC and USDT can be sent to any external wallet you control or to anyone else's wallet.
+
+<Steps>
+  <Step title="Open the send screen">
+    Tap **Send &rarr; Stablecoin transfer**.
+  </Step>
+  <Step title="Pick the asset and network">
+    Choose USDC or USDT, then the network (Ethereum, Solana, Base, Polygon &mdash; full list in [supported networks](/stablecoins/supported-networks)).
+  </Step>
+  <Step title="Enter the destination address">
+    Paste the recipient's wallet address. Glide validates the address checksum and warns if the network looks wrong (e.g., you pasted an Ethereum address but selected Solana).
+  </Step>
+  <Step title="Review and send">
+    See the network gas estimate. Confirm. Once you approve, the transaction broadcasts to the network; the dashboard tracks it through to settlement.
+  </Step>
+</Steps>
+
+## Glide-to-Glide transfers
+
+Sending to another Glide user? Use **Send &rarr; To another Glide account**. Enter their @glide handle, email, or phone number. The transfer is instant, free, and works across any currency.
+
+## Recurring and scheduled transfers
+
+For payroll, rent, or regular subscriptions, set up a recurring transfer:
+
+- Daily, weekly, monthly, or custom cadence.
+- Specific days of the month or specific weekdays.
+- Auto-pause if your balance is below a threshold (so you don't bounce a transfer).
+
+Find these under **Send &rarr; Schedule** for any rail.
+
+## Approval flows for businesses
+
+Business accounts can require multi-party approval for outbound transfers above a threshold. See [Team roles](/business/team-roles).
+
+## Fees
+
+Pricing is published at [glide.co/pricing](https://glide.co/pricing). Highlights:
+
+- Local rails (ACH, SEPA, Faster Payments, etc.) are tiered by amount &mdash; small transfers are cheap, larger ones get a slightly higher absolute fee but lower bps.
+- SWIFT has a fixed sender fee from Glide; intermediary banks may deduct independently.
+- Stablecoin transfers have no Glide fee. You pay the network gas.
+- FX is mid-market with zero spread from Glide.
+
+## Next
+
+- [FX](/money/fx)
+- [Limits and fees](/money/limits-and-fees)
+- [Stablecoin withdrawals](/stablecoins/withdrawals)

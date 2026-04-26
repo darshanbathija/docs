@@ -1,0 +1,71 @@
+---
+title: "How we protect your money"
+description: "Funds held 1:1 in segregated accounts at major regulated banks. Five jurisdictions of regulatory oversight. Continuous monitoring."
+icon: "shield"
+---
+
+Glide is a regulated Money Services Business in five jurisdictions: Canada, UK, EU, Hong Kong, and Singapore. Your funds are held 1:1 in segregated accounts at major regulated banking partners &mdash; not pooled, not lent, not used as Glide's working capital. This page is the index of how that protection works in practice.
+
+## The four layers
+
+<CardGroup cols={2}>
+  <Card title="Segregated banking" icon="vault" href="/security/segregated-banking">
+    Every fiat dollar held 1:1 at major regulated banks. Insolvency-safe.
+  </Card>
+  <Card title="Regulatory" icon="building-columns" href="/security/regulatory">
+    Five jurisdictions of MSB licensing. Annual audits. SOC 2.
+  </Card>
+  <Card title="KYC and AML" icon="user-check" href="/security/kyc-aml">
+    Continuous sanctions screening and transaction monitoring.
+  </Card>
+  <Card title="Account security" icon="lock" href="/security/two-factor">
+    Two-factor on every signin. Step-up for sensitive actions. Device attestation.
+  </Card>
+</CardGroup>
+
+## A note on stablecoins
+
+Your stablecoin balances (USDC, USDT, etc.) are held either in dedicated on-chain custody or in segregated stablecoin reserve accounts at our banking partners. They're never commingled with other customers' deposits and never used as Glide's working capital.
+
+The token issuers (Circle for USDC, Tether for USDT) have their own reserve attestations. Glide doesn't intermediate that &mdash; if you hold USDC at Glide, you're effectively holding a Circle-issued claim, segregated to your account.
+
+## What insolvency would mean
+
+If Glide ever had a corporate-level insolvency event (which we don't anticipate, but planning for the worst is part of the job):
+
+- **Fiat balances** &mdash; held at the segregated banking partner. You'd have a direct claim on those funds via the partner. Not contingent on Glide's recovery; the partner relationship is structured so customer funds aren't part of Glide's bankruptcy estate.
+- **Stablecoin balances** &mdash; either on-chain custody (which doesn't depend on Glide existing) or reserve segregated accounts (same partner-level claim as fiat).
+- **In-flight transactions** &mdash; would be handled per the terms of service and applicable insolvency law. Most rails settle within days, so the in-flight window is small.
+
+This is not a hypothetical "we hope" promise. It's structured into the operating agreements with each banking partner. Glide's regulators in each jurisdiction also require this as a condition of MSB licensing.
+
+## Audit and reporting
+
+We publish:
+
+- An annual SOC 2 Type 2 report.
+- Quarterly transaction-monitoring summaries to relevant regulators in each jurisdiction.
+- Banking-partner attestation reports when our partners publish theirs.
+- Sanctions-screening accuracy metrics on an annual basis.
+
+Hosted-customer SOC 2 packages are available on request from your relationship manager.
+
+## What we don't claim
+
+- **We're not FDIC-insured** in the United States. We're not a US bank; FDIC insurance only applies to US banks. The functional equivalent for Glide users is the segregation of funds at our banking partners, who themselves are FDIC- or jurisdiction-equivalent insured.
+- **We're not a custodian for arbitrary crypto.** We don't custody BTC, ETH, SOL, or volatile crypto-assets. The stablecoin support specifically is about USD-pegged liquidity at canonical issuers.
+- **We're not a securities broker.** We don't issue securities, intermediate securities trades, or hold customer securities. Treasury yield (Q2 2026) operates through regulated fund vehicles, not as direct securities issuance.
+
+## Reporting a security issue
+
+Found a vulnerability? Email **security@axtior.com** with a description and a proof-of-concept. We respond within 24 hours and pay valid bounties on disclosure.
+
+For account-specific security concerns (e.g., you suspect unauthorized access), use the in-app **Security** option for an immediate human escalation.
+
+## Next
+
+- [Segregated banking](/security/segregated-banking)
+- [Regulatory](/security/regulatory)
+- [KYC and AML](/security/kyc-aml)
+- [Two-factor authentication](/security/two-factor)
+- [Data and privacy](/security/data-privacy)

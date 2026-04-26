@@ -1,0 +1,103 @@
+---
+title: "Receipts and audit feed"
+description: "Every agent tool call lands in an append-only audit log. Watch live, replay later, export for compliance."
+icon: "clipboard-list"
+---
+
+Glide writes a **receipt** to your audit log after every successful agent tool call. The log is append-only at the database layer &mdash; rows can't be modified or deleted outside a strict DSAR redaction flow. Every receipt carries a cryptographic chain back to the OAuth grant that authorized the call.
+
+## What a receipt looks like
+
+Every receipt has:
+
+- **`eventType`** &mdash; what kind of event (`tool_call`, `step_up_completed`, `policy_change`, `kill_switch`).
+- **`timestamp`** &mdash; UTC instant.
+- **`agentId`** &mdash; which agent acted.
+- **`vaultId`** &mdash; which scoped sub-vault was touched.
+- **`toolName`** &mdash; e.g., `payments.initiate`, `treasury.allocate`.
+- **`endpoint`** &mdash; `read`, `write`, or `treasury` (the isolation tier).
+- **`riskVerdict`** &mdash; `pass`, `flag`, or `block`.
+- **`policyVersion`** &mdash; the envelope version that was in force.
+- **`grantId`** &mdash; the OAuth grant the agent presented.
+- **`latencyMs`** &mdash; how long the call took end-to-end.
+- **`onChainTxHash`** &mdash; for on-chain settlements, the canonical transaction hash (sourced from the chain itself, not from any third-party receipt).
+
+For privacy, the actual input and output of the call aren't stored verbatim. Instead we store **digests** &mdash; SHA-256 hashes that prove the data hasn't changed without storing the data itself.
+
+## Live activity feed
+
+From your dashboard, **Agents &rarr; Activity feed**. The feed streams new receipts via Server-Sent Events; you see new rows the moment they land. On mobile, the feed polls every few seconds.
+
+Each row shows:
+
+- The agent and tool that fired.
+- The amount and counterparty (or `[REDACTED]` for redacted fields).
+- A natural-language summary &mdash; the same LLM narrator that powers step-up prompts, condensed for the feed.
+- The risk verdict, color-coded (green pass, amber flag, red block).
+- A replay affordance for jumping into the full receipt detail.
+
+## Replay a receipt
+
+Tap any row to open the full detail view. You'll see:
+
+- The complete receipt fields.
+- The diff &mdash; before/after state for any tool that changes something.
+- The full policy envelope that was in force at the time (versioned).
+- The OAuth grant that was used (with redacted bearer; you can see the `jti` for tracing).
+- The on-chain hash if the call settled on-chain, with a deep-link to a block explorer.
+
+Replays are useful for:
+
+- Compliance review. "Show me every payment over $10k in March."
+- Debugging. "Why did the agent stop after this call?"
+- Trust verification. "Did the policy actually evaluate the way I expected?"
+
+## Search and filter
+
+The feed has filters for:
+
+- **Agent** &mdash; pick a specific agent.
+- **Tool** &mdash; pick a specific tool name.
+- **Verdict** &mdash; pass / flag / block.
+- **Time window** &mdash; last hour, day, week, month, custom range.
+- **Amount range** &mdash; minimum and maximum.
+- **Counterparty** &mdash; specific beneficiary.
+
+Filters compose. Multi-filter queries return in milliseconds for typical accounts (hot retention is the last 90 days; older receipts read from warm storage with a small extra latency).
+
+## Compliance export
+
+For accountants, auditors, and tax filings, export your audit log:
+
+- **JSON** &mdash; sync export, available immediately.
+- **PDF** &mdash; async export with a queue; takes seconds for small ranges, minutes for year-long ranges. Cryptographically signed by Glide.
+
+Open **Agents &rarr; Export** to start one. Default range is the trailing 30 days; you can pick any range up to one year per export. Larger windows run as monthly shards.
+
+## Tamper-evidence
+
+The audit log is append-only at the Postgres layer. A database trigger denies UPDATE, DELETE, and TRUNCATE on the receipts table. The only allowed mutation is a **DSAR redaction** &mdash; an admin-gated flow that nulls specific fields and sets a `redactedFieldsBitmap`. The replay UI renders redacted fields with a `[REDACTED]` watermark; the row's existence is preserved.
+
+Even the on-chain transaction hash is verified server-side at write time &mdash; we re-fetch it from the chain itself, never trust a value claimed by the agent or a facilitator. If the hash doesn't match, the receipt isn't written and the call is rolled back.
+
+## Privacy mode for receipts
+
+If you've enabled the strictest push privacy mode, receipts in the activity feed render in a compact form by default &mdash; just "agent activity" with a tap-to-expand. Doesn't change what's stored; just changes what shows on screen by default.
+
+## Retention
+
+| Tier        | Range          | Where                       | Latency to read |
+| ----------- | -------------- | --------------------------- | --------------- |
+| Hot         | 0&ndash;7 days | Postgres                    | &lt;10ms        |
+| Warm        | 7&ndash;90 days | TimescaleDB-compressed     | &lt;100ms       |
+| Cold        | 90 days&ndash;1 year | S3 Glacier-Instant     | seconds         |
+| Regulatory  | 1&ndash;7 years | S3 Glacier-Deep            | hours, on-request |
+
+Default retention is 1 year. Regulatory tier (1&ndash;7 years) is **off by default** &mdash; turn it on if your jurisdiction requires longer retention or your auditor asks.
+
+## Next
+
+- [Policy envelope](/agents/policy-envelope)
+- [Step-up approvals](/agents/step-up)
+- [Kill switch](/agents/kill-switch)
+- [Data and privacy](/security/data-privacy)

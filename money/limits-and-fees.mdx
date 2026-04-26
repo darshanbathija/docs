@@ -1,0 +1,60 @@
+---
+title: "Limits and fees"
+description: "What you can move, how often, and what each rail costs. Pricing is published; nothing is hidden."
+icon: "circle-info"
+---
+
+Glide publishes its full pricing at [glide.co/pricing](https://glide.co/pricing). This page is the in-help-center summary plus the limit framework that determines how much you can move per transaction and per month.
+
+## Account tiers
+
+Limits scale with your verification level. You move up tiers automatically as your activity warrants, or on request from **Settings &rarr; Limits**.
+
+| Tier              | Per-transaction | Monthly aggregate | What unlocks it |
+| ----------------- | --------------- | ----------------- | --------------- |
+| Crypto-only       | $10,000          | $10,000 lifetime  | No KYC needed   |
+| Standard personal | $50,000          | $500,000          | Standard KYC    |
+| Enhanced personal | $250,000         | Sized to activity | Enhanced KYC + activity history |
+| Business standard | $500,000         | Sized to declared activity | KYB + EBOM |
+| Business enhanced | Uncapped per-tx | Sized at onboarding | KYB + activity history + relationship manager |
+
+## What "sized to activity" means
+
+Beyond the standard tier, monthly limits are calibrated to what you've told us you'll do. If you said you'd send $200k/month in payroll, your monthly aggregate sits comfortably above that. If you suddenly try to send $5M, we'll ask for context (and probably approve, but we'll ask).
+
+This isn't "we'll block you randomly." It's risk-tiered review, which is what regulators expect from a regulated MSB.
+
+## Fee summary
+
+| Rail / activity            | Glide fee                        | Network / partner cost |
+| -------------------------- | -------------------------------- | ---------------------- |
+| Stablecoin deposit         | None                             | Network gas            |
+| Stablecoin send            | None                             | Network gas            |
+| Stablecoin to fiat convert | Mid-market rate, no spread       | None                   |
+| ACH / SEPA / Faster Payments out | Tiered (small-amount cheaper)    | None                   |
+| SWIFT out                  | Flat sender fee                  | Intermediary banks may deduct independently |
+| Card spending              | None on Glide side               | Foreign-currency settle at mid-market |
+| Currency conversion        | None &mdash; mid-market only     | None                   |
+
+## What we don't charge
+
+- Account opening fees.
+- Monthly maintenance fees.
+- Per-card fees.
+- Inactivity fees.
+- Foreign transaction fees on card spend.
+- Spread on FX.
+
+## ATM withdrawals
+
+Card-supported ATMs withdraw from your USD or local-currency balance. Glide doesn't add an ATM fee; the ATM operator may charge their own fee, which is shown on-screen before you confirm at the machine.
+
+## Rate-limit walls (anti-abuse)
+
+Independently of your account tier, every account has anti-abuse rate limits: maximum number of failed login attempts, maximum stablecoin send velocity in a 60-second window, etc. These are set high enough that normal use never hits them. If you do hit one (e.g., a script accidentally retried 50 times in a row), the dashboard surfaces a clear message; you don't get silently locked out.
+
+## Next
+
+- [Pricing page](https://glide.co/pricing)
+- [Deposits](/money/deposits)
+- [Send money](/money/send)

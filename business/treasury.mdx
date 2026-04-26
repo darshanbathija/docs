@@ -1,0 +1,64 @@
+---
+title: "Treasury"
+description: "Yield on idle USDC and fiat. Allocation across approved strategies. Coming Q2 2026."
+icon: "vault"
+---
+
+Most operating companies hold idle cash that sits earning effectively zero. Glide's treasury features let you put that idle balance to work in low-risk yield strategies &mdash; T-bill funds, money-market funds, on-chain USDC vaults &mdash; with the same regulatory posture as the rest of your account.
+
+<Tip>
+  Treasury yield ships **Q2 2026**. The product spec is locked; we're in regulatory review now. Self-hosted stablecoin treasury (manual rebalancing) is available today.
+</Tip>
+
+## What it is
+
+Idle balances above an operating threshold can be allocated across:
+
+- **T-bill funds** &mdash; short-duration US Treasury exposure via a regulated fund vehicle. Tracks the federal funds rate.
+- **Money-market funds** &mdash; ultra-short institutional MMFs. Slightly lower yield, slightly higher liquidity.
+- **On-chain USDC vaults** &mdash; canonical-issuer stablecoin yield products (Maple, Aave, etc.) on the Glide-vetted allowlist. Higher yield, higher mechanism risk.
+
+You set:
+
+- An **operating reserve** &mdash; the amount that stays in immediate-spend balance.
+- A **target allocation** across the strategies you've enabled (e.g., 60% T-bill / 30% MMF / 10% on-chain).
+- A **rebalance cadence** &mdash; weekly, monthly, or manual.
+
+When the actual allocation drifts from target by more than a tolerance, a rebalance proposal lands in your dashboard for approval (or executes automatically if you've enabled auto-rebalance).
+
+## Risk layering
+
+Glide's treasury product is structured so that:
+
+- **The principal is custody-isolated.** Your treasury allocation lives in segregated vehicles, not in Glide's commingled funds. If Glide had an operational issue, the treasury allocation is unaffected.
+- **Yield is conservative by default.** The default mix is T-bill heavy. On-chain vault exposure is opt-in and capped.
+- **Liquidity is fast.** T-bill and MMF allocations can be redeemed within one business day. On-chain vault allocations can be redeemed in seconds, depending on the vault's specific liquidity model.
+
+Yield is not guaranteed. The strategies are low-risk but not zero-risk; specifically, on-chain vaults carry smart-contract risk that's disclosed in the install-time consent flow.
+
+## How agent treasury fits
+
+The [Treasury skill](/agents/skills/treasury) lets Claude propose rebalances inside the strategies you've enabled. This is a layer on top of the underlying treasury product:
+
+- Treasury (the product) defines the strategy menu and the principal-safety posture.
+- Treasury skill (the agent capability) lets an AI agent optimize within that menu.
+
+You can use treasury without ever installing the agent skill. The skill is for accounts that want continuous optimization without continuous manual review.
+
+## Pricing
+
+Treasury features have a small management fee (in basis points, charged on the AUM held in yield strategies). The fee is published transparently and is materially below what private banks charge for equivalent services.
+
+Operating-balance funds &mdash; everything outside the yield allocation &mdash; are unchanged: zero monthly fees, zero spread, same Glide pricing as today.
+
+## When you'll have access
+
+Treasury yield ships **Q2 2026**. We're notifying eligible business accounts as the regulatory rollout completes per jurisdiction. If you want early-access status, talk to your relationship manager.
+
+In the meantime, you can hold USDC in your operating Glide account and rebalance manually via the on-chain vault providers we vet. The mechanics are similar; the cleanness of the product surface is what's coming.
+
+## Next
+
+- [Treasury skill (agent banking)](/agents/skills/treasury)
+- [Stablecoins overview](/stablecoins/overview)
+- [Vendor payments](/business/vendor-payments)

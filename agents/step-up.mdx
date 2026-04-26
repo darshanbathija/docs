@@ -1,0 +1,80 @@
+---
+title: "Step-up approvals"
+description: "When an agent's action crosses your envelope threshold, you get a one-time approval prompt. Face ID, passkey, or your two-factor method."
+icon: "fingerprint"
+---
+
+Step-up is how Glide hands control back to you the human at exactly the right moment. The agent does the work, finds the next thing to do, computes that it crosses your envelope threshold, and pauses. You get a notification. You approve in the dashboard or app. The agent continues.
+
+## When step-up triggers
+
+Any of:
+
+- The transaction amount exceeds the envelope's **step-up threshold**.
+- The counterparty isn't in your allowlist (and the skill template treats out-of-allowlist as step-up).
+- The transaction velocity would exceed the rolling-window cap.
+- The risk model returns a `flag` verdict.
+- The agent is requesting a sensitive write (e.g., adding to the beneficiary allowlist, changing the policy envelope itself).
+
+For most consumer skills, the default is "every transaction asks." For higher-trust skills (e.g., Trip budget, which is read-only), step-up never triggers.
+
+## What you see
+
+The dashboard shows a step-up card with:
+
+- **Which agent** is asking.
+- **Which tool** it wants to call.
+- **The amount and counterparty** (or a redacted preview if it's a non-money tool).
+- **The natural-language explanation** &mdash; an LLM-generated summary of what the agent's about to do, in plain English.
+- **A diff view** &mdash; before/after state if the action would change something.
+- **The before-and-after policy** &mdash; if the agent is asking to change envelope settings.
+
+You also get a push notification. Approve from the lock screen with Face ID; or open the dashboard to see full detail before approving.
+
+## How to approve
+
+| Surface       | How                                                        |
+| ------------- | ---------------------------------------------------------- |
+| Phone push    | Face ID or fingerprint, directly from the lock screen      |
+| Mobile app    | Tap the step-up card, biometric or passcode                |
+| Web dashboard | Tap **Approve**, then your passkey or two-factor method    |
+
+If you're not at a device, you can decline: tap **Decline** and the agent gets a structured rejection. The agent can ask "should I try a different amount?" or "want me to skip this one?" depending on how the skill's prompt is written.
+
+## How step-up is bound to a single call
+
+Every step-up generates a **single-use sigil** &mdash; a one-time token that authorizes the specific tool call you approved. Once consumed, the sigil is invalidated. Replay attacks can't use the same sigil to approve a different call.
+
+If the agent retries the same tool call (e.g., the network blipped between approval and broadcast), it has to ask for a fresh sigil. This is intentional: every successful tool call is paired with exactly one human approval.
+
+## URL-mode elicitation
+
+Some runtimes can't render step-up prompts inline (older chat surfaces, voice-only interfaces, headless agents). In those cases, the agent gets back a **step-up URL** &mdash; a link you open in the dashboard or mobile app, which surfaces the same approval card.
+
+You'll see this most commonly in:
+
+- Voice-mode agents (Apple Intelligence summary mode, ChatGPT Voice).
+- IDE-embedded coding agents that don't have a chat-style approval UI.
+- Server-side agent frameworks that don't have a user attention surface.
+
+In every case, the URL mode preserves the same single-use sigil + cryptographic chain &mdash; just with a different rendering surface.
+
+## What you can't bypass
+
+You can't disable step-up entirely. The minimum step-up threshold for any money-touching skill is whatever the skill's template defines &mdash; typically $0 (every payment asks). You can raise the threshold to "approve everything below $X automatically" but the bar Glide will accept depends on the skill type.
+
+This is an intentional ceiling. The whole pitch of agent banking is "you stay in control." A skill that lets the agent move arbitrary amounts without asking would defeat that pitch.
+
+## Step-up notifications under privacy mode
+
+If you've set push privacy to **minimal** (e.g., for lock-screen privacy in shared spaces), the push only says "Glide step-up requested." You tap to open the app and see the detail. Approval still requires biometric.
+
+If you've set push privacy to **rich**, the push includes the agent name, tool name, amount, and counterparty so you can decide before tapping.
+
+Toggle this in **Settings &rarr; Notifications &rarr; Privacy mode**.
+
+## Next
+
+- [Policy envelope](/agents/policy-envelope)
+- [Receipts](/agents/receipts)
+- [Kill switch](/agents/kill-switch)

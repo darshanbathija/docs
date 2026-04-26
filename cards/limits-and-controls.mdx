@@ -1,0 +1,75 @@
+---
+title: "Card limits and controls"
+description: "Set per-card spending limits, freeze and unfreeze, restrict by merchant category, and watch every authorization in real time."
+icon: "sliders"
+---
+
+Every Glide card has fine-grained controls. You set them once when you issue the card; you change them any time after.
+
+## Spending limits
+
+For each card, you can set:
+
+- **Per-transaction limit** &mdash; the maximum single charge.
+- **Daily limit** &mdash; rolling 24-hour spending cap.
+- **Monthly limit** &mdash; calendar-month cap.
+- **Lifetime limit** &mdash; total spending cap before the card auto-disables (useful for one-off vendor cards).
+
+Limits apply across all currencies; charges convert to your default currency to evaluate against the limit.
+
+## Freeze and unfreeze
+
+From the dashboard, **Cards &rarr; pick a card &rarr; Freeze** disables the card in under one second. Freeze is reversible &mdash; tap **Unfreeze** to bring it back. Use freeze when:
+
+- You can't find the card and want a precaution before reporting it lost.
+- You're done with a free-trial subscription and want to make sure you can't be re-billed.
+- A specific merchant keeps charging you incorrectly.
+
+## Merchant category restrictions
+
+You can restrict a card by **merchant category code (MCC)** &mdash; the standard taxonomy Visa uses to classify merchants.
+
+Common categories you can allow or block:
+
+- **Travel** (airlines, hotels, car rentals).
+- **Restaurants and bars**.
+- **Streaming and digital services** (Netflix, Spotify, etc.).
+- **Online retail** (Amazon, Shopify-stores, etc.).
+- **Cash equivalents** (ATMs, money transfer services).
+- **Gambling**.
+- **Adult content**.
+
+A card with a single allowlisted MCC is the cleanest way to issue a vendor-specific card &mdash; e.g., issue a card that only works for AWS, then no other charge can ever land on it.
+
+## Region restrictions
+
+Restrict a card to spend only in specific countries or regions. Useful for travel cards (only the country you're in) or company cards (only the country your team operates in).
+
+## Real-time authorization stream
+
+Every card transaction streams to your dashboard in real time. You see the merchant, the amount, the currency, and the MCC the moment Visa sends us the authorization &mdash; before the charge settles. If something looks wrong, freeze the card from the same screen and the next attempt is denied.
+
+## Per-card controls for businesses
+
+Business accounts can issue cards with per-employee controls:
+
+- Set spending limits and MCC restrictions when issuing the card.
+- Require a manager approval for charges above a threshold.
+- Auto-freeze cards when an employee leaves (one click from the team management screen).
+
+See [Corporate cards](/business/corporate-cards) for the full team workflow.
+
+## Push notifications
+
+Get a push notification on every authorization, every settlement, every limit hit, every decline. From **Settings &rarr; Notifications &rarr; Cards**, choose:
+
+- **Rich** &mdash; the push includes merchant, amount, and currency.
+- **Minimal** &mdash; the push says "card activity" with no detail; tap to view.
+
+Minimal is the default if you opt for stronger lock-screen privacy.
+
+## Next
+
+- [Apple Pay and Google Pay](/cards/apple-google-pay)
+- [Disputes](/cards/disputes)
+- [Corporate cards (business)](/business/corporate-cards)

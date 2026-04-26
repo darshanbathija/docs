@@ -1,0 +1,73 @@
+---
+title: "Team and roles"
+description: "Invite teammates per entity with role-based access. Approval flows for high-value transfers."
+icon: "users"
+---
+
+Business accounts support multi-user access with role-based permissions. Each teammate is invited per entity; their access doesn't leak across entities they're not on.
+
+## Role matrix
+
+| Role         | View balances | Issue cards | Initiate transfers | Approve transfers | Modify policy / team |
+| ------------ | ------------- | ----------- | ------------------ | ----------------- | -------------------- |
+| **Admin**    | Yes           | Yes         | Yes                | Yes               | Yes                  |
+| **Finance**  | Yes           | Yes         | Yes                | Yes (under threshold) | No                |
+| **Operator** | Yes           | No          | Yes (under threshold) | No             | No                   |
+| **Viewer**   | Yes           | No          | No                 | No                | No                   |
+
+A **threshold** is the per-entity multi-approval policy you've configured. Below the threshold, single-Operator approval is sufficient. Above, two parties must approve.
+
+## Inviting a teammate
+
+<Steps>
+  <Step title="Open team settings">
+    From the dashboard, **Settings &rarr; Team &rarr; Invite teammate**.
+  </Step>
+  <Step title="Pick the entity">
+    Choose which entity the teammate gets access to. They can be invited to multiple entities, but each invite is separate.
+  </Step>
+  <Step title="Pick the role">
+    Admin / Finance / Operator / Viewer. The role dictates what they can do once they accept.
+  </Step>
+  <Step title="Send the invite">
+    They get an email with a link. They sign up (or sign in if they already have a Glide account), complete KYC if it's their first business-account access, and the role takes effect.
+  </Step>
+</Steps>
+
+## Multi-approval thresholds
+
+Set a threshold: any outbound transfer above $X requires approval from two team members. Defaults:
+
+- **&lt;$10,000:** single Operator or Finance approval.
+- **$10,000&ndash;$100,000:** Finance + one other Finance/Admin.
+- **&gt;$100,000:** Finance + Admin.
+
+Override at **Settings &rarr; Approvals**. You can set per-entity thresholds and even per-currency thresholds (e.g., USDC sends require multi-approval at lower amounts than fiat wires).
+
+## Approval flow in practice
+
+When a transfer requires multi-approval, the initiator drafts and submits the transfer. It enters a **pending** state in the audit feed. The required approver(s) get push notifications.
+
+Each approver opens the transfer detail, reviews the amount, recipient, rail, and notes, then taps **Approve** with biometric. Once all required approvals are in, the transfer broadcasts.
+
+Approvers can **reject** with a reason; the initiator gets the rejection in their feed and can revise + resubmit.
+
+## Removing a teammate
+
+From **Settings &rarr; Team &rarr; pick the teammate &rarr; Remove**. Their access ends immediately. Any cards they had issued can be auto-frozen (default) or kept active (if you want to preserve recurring charges).
+
+Audit history of the teammate's actions stays in the feed; removing access doesn't erase what they did.
+
+## Programmatic team access
+
+For finance teams running automated reconciliation, Glide will publish read-only API access in **Q4 2026**. Until then, manual data export from the dashboard (CSV, PDF, JSON) covers most reconciliation workflows.
+
+## Just-in-time access
+
+For one-off contractors or short engagements, invite as **Viewer**, escalate to **Operator** when needed, and remove access on the engagement's end date. Calendar invites for end-date removal are on the roadmap; for now it's a manual cleanup.
+
+## Next
+
+- [Multi-entity setup](/business/multi-entity)
+- [Corporate cards](/business/corporate-cards)
+- [Vendor payments](/business/vendor-payments)

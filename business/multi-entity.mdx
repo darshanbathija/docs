@@ -1,0 +1,79 @@
+---
+title: "Multi-entity setup"
+description: "Hold up to 20 entities under one admin. Subsidiaries, holdcos, SPVs, side projects &mdash; all in one dashboard."
+icon: "sitemap"
+---
+
+If you run more than one company, Glide's multi-entity model lets you operate them all from one signed-in admin without juggling separate accounts.
+
+## What an entity is
+
+An entity is a legal company &mdash; LLC, Inc, Ltd, GmbH, etc. Each entity gets:
+
+- Its own KYB (separate from the admin's KYC).
+- Its own multi-currency balances (no commingling with other entities).
+- Its own corporate cards.
+- Its own audit feed and compliance reports.
+- Its own beneficial-owner attestations.
+
+The admin user is a separate concept &mdash; you, the human, sign in once. Inside the dashboard, you switch context between entities you have access to.
+
+## Setting up
+
+<Steps>
+  <Step title="Open your business account">
+    First entity is created during signup. You complete KYB on this entity and KYC on yourself (and any other admins).
+  </Step>
+  <Step title="Add a second entity">
+    From the dashboard, **Settings &rarr; Entities &rarr; Add entity**. Provide the legal name, registration number, country, and beneficial-owner detail. KYB runs on this entity independently &mdash; same business day for typical structures.
+  </Step>
+  <Step title="Switch context">
+    Top-left of the dashboard shows the active entity. Tap it to see the entity picker. The dashboard re-renders to show the active entity's balances, cards, payroll, and activity.
+  </Step>
+</Steps>
+
+## Permission model
+
+Permissions are **per entity**. The admin user has access by default; teammates can be invited per entity with a specific role. A teammate with **Finance** role on Entity A doesn't see anything in Entity B unless they're separately invited there.
+
+See [Team roles](/business/team-roles) for the full role matrix.
+
+## When to use multi-entity vs separate accounts
+
+**Use multi-entity when:**
+
+- You're the same human across all the companies (e.g., you're the founder of multiple).
+- You want consolidated reporting at the admin level.
+- The companies share a beneficial owner (you).
+
+**Use separate accounts when:**
+
+- The companies have meaningfully different beneficial owners and you don't want one admin user with cross-entity access.
+- The companies operate in different jurisdictions where regulatory reasons require separate banking relationships.
+- You're an accountant or operator managing multiple unrelated clients (in which case each client opens their own).
+
+## Holdco / opco structures
+
+For holding-company / operating-company setups, both entities live in the dashboard. Internal transfers (holdco &harr; opco) happen via Glide-to-Glide transfers, instant and free. Quarterly true-ups, dividends, intercompany loans &mdash; all just transfers in the dashboard, with the audit log automatically reconciled.
+
+If your structure crosses jurisdictions (e.g., Cayman holdco + Delaware opco), each entity gets KYB'd in its own jurisdiction; reporting respects local regulatory requirements.
+
+## SPVs and side projects
+
+A single side project rarely needs its own entity. But if you've got a side project that's:
+
+- Generating non-trivial revenue.
+- Has external co-founders or contributors.
+- Will eventually spin out.
+
+then giving it its own entity from day one keeps the books clean. Add it via **Settings &rarr; Entities &rarr; Add entity**; takes a day.
+
+## Limit: 20 entities per admin
+
+For most users this is far above what they need. If you're a holding-co operator managing 20+ entities, talk to us &mdash; we'll set you up with a structure that scales (typically a parent admin with delegated sub-admins per cluster).
+
+## Next
+
+- [Team roles](/business/team-roles)
+- [Corporate cards](/business/corporate-cards)
+- [Identity verification](/accounts/identity)

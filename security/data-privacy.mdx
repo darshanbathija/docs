@@ -1,0 +1,101 @@
+---
+title: "Data and privacy"
+description: "What we collect, what we keep, how long we keep it, and how to request a copy or deletion."
+icon: "user-shield"
+---
+
+Glide collects what's needed to operate a regulated account and not more. This page documents what's collected, what's retained, how long, and how to exercise your rights over it.
+
+## What we collect
+
+| Category                  | Why we collect it                              | Retention default |
+| ------------------------- | ---------------------------------------------- | ----------------- |
+| KYC ID and selfie         | Regulated identity verification                 | 7 years post-account-closure (regulatory minimum) |
+| Sanctions screening logs  | Demonstrate compliance to regulators            | 7 years           |
+| Transaction history       | Operate the account, file regulatory reports    | 7 years           |
+| Card transaction detail   | Card statements, dispute support                | 7 years           |
+| Activity feed receipts    | Audit log for the account                       | 1 year (default), opt-in 1&ndash;7 years |
+| Sign-in and device metadata | Account security, fraud detection             | 90 days for non-anomalous; longer if flagged |
+| Support conversation history | Resolve cases, regulatory record-keeping     | 5 years           |
+| Marketing-opt-in preferences | Email and product communication               | Until you opt out + 6 months |
+
+We don't collect:
+
+- **Browsing history outside Glide.** No tracking pixels for adtech, no cross-site behavior collection.
+- **Location data beyond what you provide for account opening.** We don't continuously track where your device is.
+- **Contact list, photo library, or other device data** beyond what you upload (e.g., a profile photo).
+- **Biometric data after KYC.** The selfie used for KYC matching is processed by the doc-check provider for that one match and discarded; it's not retained for biometric login.
+
+## Where data lives
+
+Data is stored in the jurisdiction matching your account region:
+
+- Canadian-residence accounts: Canada.
+- UK-residence accounts: UK.
+- EU-residence accounts: EU (specifically, an EU member state with adequate data-protection certification).
+- Hong Kong / Singapore-residence accounts: in-region.
+
+Cross-border data transfers happen only as required for regulatory reporting or for serving cross-border transactions. Standard data-protection contractual safeguards (SCCs, Privacy Shield-equivalent) apply where regulation requires.
+
+## Your rights
+
+Under GDPR (EU), UK GDPR (UK), PIPEDA (Canada), PDPO (HK), PDPA (SG), you have the right to:
+
+- **Access** &mdash; request a copy of all the data we hold on you.
+- **Correction** &mdash; correct inaccurate data.
+- **Deletion** &mdash; request deletion of data, subject to retention requirements that come from regulation.
+- **Portability** &mdash; request your data in a portable format.
+- **Object** &mdash; object to specific processing (e.g., marketing).
+
+To exercise any of these, **Settings &rarr; Privacy &rarr; Data request** or email **privacy@axtior.com**. We respond within 30 days (often much sooner).
+
+## What deletion can and can't do
+
+You can delete:
+
+- **Your activity feed** beyond the regulatory minimum (after 7 years for transaction history; after 1 year for receipts in the default tier).
+- **Marketing preferences** &mdash; immediate.
+- **Profile photo and non-required metadata** &mdash; immediate.
+- **Closed-account data** beyond the 7-year regulatory hold &mdash; deletion runs after the 7-year clock expires.
+
+You can't delete (during the regulatory hold):
+
+- **Transaction history** &mdash; required to be retained for regulatory reasons.
+- **KYC documents and sanctions screening logs** &mdash; same.
+- **AML monitoring detail** &mdash; same.
+
+The regulatory hold isn't our preference; it's a baseline our regulators require. After the hold expires, deletion runs and is irreversible.
+
+## DSAR redaction in receipts
+
+If you redact a field in your activity feed (e.g., a counterparty name in a transaction you'd rather not retain visible), the receipt row stays in the audit log but the field is nulled and the redacted-fields bitmap is set. The replay UI renders the redacted field with a `[REDACTED]` watermark.
+
+This preserves audit-log tamper-evidence (we can't make a row vanish) while honoring your deletion right (the actual data is gone).
+
+## Cookies and tracking
+
+The Glide web dashboard uses:
+
+- **Strictly necessary cookies** &mdash; session management, sign-in state. Cannot be disabled.
+- **Analytics cookies** &mdash; aggregate usage tracking. Off by default outside the EU; opt-in via the cookie banner.
+- **No advertising cookies. No third-party tracking pixels. No retargeting.**
+
+The cookie banner is honest. If you disable analytics, you'll see fewer banners and we'll see less usage data; the dashboard works the same either way.
+
+## Third-party processors
+
+We use third parties to operate the account: Privy for embedded wallet auth, Bridge for fiat rails, Chainalysis for sanctions screening, Alchemy / RPC providers for chain reads, Sentry for error tracking, Mintlify for these docs.
+
+Each processor signs a data-processing agreement that limits them to the specific operation they perform. A list of current processors and the data each receives is at **Settings &rarr; Privacy &rarr; Processors** in your dashboard. We give 30-day notice before adding or changing a processor that handles personal data.
+
+## Reporting a privacy concern
+
+For privacy-specific concerns: **privacy@axtior.com**.
+
+For regulator inquiries (e.g., a regulator's data-protection authority asking on your behalf): we respond directly to the authority and notify you per local-law requirements.
+
+## Next
+
+- [KYC and AML](/security/kyc-aml)
+- [Two-factor authentication](/security/two-factor)
+- [Regulatory](/security/regulatory)

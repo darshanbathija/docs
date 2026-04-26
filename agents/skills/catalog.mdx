@@ -1,0 +1,81 @@
+---
+title: "Skills catalog"
+description: "Pre-built agent skills you can install in one tap. Each runs against a scoped sub-vault under a policy you approve."
+icon: "grid"
+---
+
+A skill is a packaged agent capability &mdash; a defined set of tools, a policy template, a consent flow, and a runtime compatibility list. Install it once; it works the same in Claude Desktop, ChatGPT Apps, Google Vertex, OpenClaw, and Hermes.
+
+The full live catalog is at [glide.co/skills](https://glide.co/skills). The skills below are the first six Glide ships.
+
+## AP agent
+
+Let Claude or ChatGPT read your QuickBooks Online or Xero invoices and draft vendor payments against your AP envelope.
+
+- **Reads:** your QBO/Xero invoices, your existing vendor list.
+- **Writes:** payment proposals against an allowlisted vendor set.
+- **Caps:** $2,500 per transaction, $10,000 per day (defaults; override at install).
+- **Step-up:** every payment requires your explicit approval before broadcast.
+
+[Read more &rarr;](/agents/skills/ap-agent)
+
+## Treasury
+
+Let Claude allocate idle USDC across yield strategies you've pre-approved (T-bills, money-market funds, etc.).
+
+- **Reads:** your treasury balance, current yield strategy allocations.
+- **Writes:** rebalance proposals between approved strategies.
+- **Caps:** $50,000 per allocation move, $200,000 per day.
+- **Step-up:** every reallocation crossing the daily threshold requires approval.
+
+[Read more &rarr;](/agents/skills/treasury)
+
+## Trip budget
+
+Let Claude track travel spend against a budget you set. Lower-stakes; great as a first agent install.
+
+- **Reads:** card transactions tagged to the trip, balance.
+- **Writes:** none &mdash; this is a read-only skill.
+- **Caps:** N/A (read-only).
+- **Step-up:** N/A (read-only).
+
+[Read more &rarr;](/agents/skills/trip-budget)
+
+## Market research cap
+
+Let an agent tap a small research-spend budget to pay for one-off services (single API calls, single research reports, single freelance gigs).
+
+- **Reads:** your research-spend balance, recent purchases.
+- **Writes:** payment proposals for individual line items.
+- **Caps:** $100 per transaction, $1,000 per month.
+- **Step-up:** transactions above $50 require approval.
+
+## Payroll cosigner
+
+Let an agent pre-validate payroll batches you'll approve. The agent flags issues (missing tax info, off-cadence amounts) before you sign off.
+
+- **Reads:** payroll runs, employee details.
+- **Writes:** none &mdash; the agent flags but doesn't initiate.
+- **Caps:** N/A (advisory).
+- **Step-up:** N/A.
+
+## AP agent (ChatGPT Apps)
+
+Same as the Claude AP agent but bound to ChatGPT's tool runtime.
+
+- Same scope, caps, and step-up as the Claude variant.
+- Bound to ChatGPT's MCP integration via the Glide ChatGPT App listing.
+
+## Future skills
+
+The catalog grows. New skills go through a review checklist that catches obvious issues (does the consent copy actually mention what the skill can do? does the policy template match the consent? is the runtime compat correct?). Verified-tier skills additionally have a signed Trusted Skill Agreement on file.
+
+## Install a skill
+
+From [glide.co/skills](https://glide.co/skills), tap any skill and walk the install flow. See [Quickstart](/agents/quickstart) for the step-by-step.
+
+## Next
+
+- [Policy envelope](/agents/policy-envelope)
+- [Receipts](/agents/receipts)
+- [Runtimes](/agents/runtimes)

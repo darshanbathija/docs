@@ -1,101 +1,95 @@
 ---
-title: "Agent platform quickstart"
-description: "Spin up apps/mcp locally + connect Claude Desktop / ChatGPT / Vertex / OpenClaw / Hermes. The 30-minute path to a working agent banking environment."
-icon: 'rocket'
+title: "Connect your first agent"
+sidebarTitle: "Quickstart"
+description: "Install a Glide skill, connect it to Claude Desktop or ChatGPT, and watch the first tool call land in your audit feed."
+icon: "rocket"
 ---
 
-This is the agent-platform-specific quickstart. For the broader Glide bring-up (web app + data layer), see the [main quickstart](/quickstart).
+The fastest path to seeing agent banking work end-to-end. Takes about 5 minutes.
 
-## Prerequisites
+<Steps>
+  <Step title="Pick a skill">
+    Open the [skills catalog](https://glide.co/skills) and pick one. For your first run, the **Trip budget** skill is a low-stakes way to see the flow &mdash; it lets Claude track travel spend against a budget you set.
 
-- Glide running locally per the [main quickstart](/quickstart) (Postgres on `localhost:5435`, Redis on `localhost:6381`, Inngest dev on `localhost:8288`, web on `localhost:3000`).
-- Privy Multi-tenant tenant with `NEXT_PUBLIC_PRIVY_APP_ID` + `PRIVY_APP_SECRET` set.
-- Node 22+, pnpm.
+    Other options:
 
-## Boot `apps/mcp`
+    - **AP agent** &mdash; let Claude draft vendor payments from QuickBooks invoices.
+    - **Treasury** &mdash; let Claude allocate idle USDC across yield strategies.
+    - **Payroll cosigner** &mdash; let Claude pre-validate payroll batches you'll approve.
 
-```bash
-# In the axtior-neobank repo
-pnpm --filter mcp dev
-```
+    See [Skills catalog](/agents/skills/catalog) for the full list.
+  </Step>
+  <Step title="Install the skill">
+    Tap **Install** on the skill page. The install flow walks you through:
 
-This boots the MCP gateway on `localhost:8787` with HMAC-SHA256 dev verifier. The dev secret is read from `MCP_TOKEN_VERIFIER_DEV_SECRET` in your `.env.local`.
+    1. **Pick the entity (business)** or sub-vault (personal) the skill operates on.
+    2. **Configure the policy envelope** &mdash; per-transaction cap, daily cap, counterparty allowlist, step-up threshold. Defaults are sensible; you can override anything.
+    3. **OAuth handshake** &mdash; you approve Glide as the authorization server for this skill.
+    4. **Sub-vault creation** &mdash; Glide creates the scoped sub-vault the skill operates on.
+    5. **Grant issued** &mdash; the agent gets its first short-lived token.
 
-Set a 32-byte hex secret if you haven't already:
+    The whole flow is on one screen and takes under a minute.
+  </Step>
+  <Step title="Add Glide to your AI runtime">
+    For **Claude Desktop**:
 
-```bash
-echo "MCP_TOKEN_VERIFIER_DEV_SECRET=$(openssl rand -hex 32)" >> apps/web/.env.local
-```
+    1. Open Claude Desktop &rarr; **Settings &rarr; Developer &rarr; Edit Config**.
+    2. Add the Glide MCP server:
 
-## Sanity-check the gateway
-
-<CodeGroup>
-```bash Public manifest (no auth)
-curl http://localhost:8787/mcp/manifest
-```
-
-```bash Tool catalog discovery (no auth, MCP spec)
-curl -X POST http://localhost:8787/mcp/read \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
-
-```bash Health probes
-curl http://localhost:8787/healthz
-curl http://localhost:8787/readyz
-```
-</CodeGroup>
-
-## Connect an agent runtime
-
-The MCP gateway speaks MCP spec 2025-11-25. Any MCP-compliant runtime works. Glide ships partner pack drafts for the five hero runtimes — see [Partner registries](/agents/partner-registries).
-
-### Claude Desktop
-
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "glide-local": {
-      "url": "http://localhost:8787/mcp/read",
-      "headers": {
-        "Authorization": "Bearer <hmac-signed-jwt>"
+    ```json
+    {
+      "mcpServers": {
+        "glide": {
+          "url": "https://mcp.glide.co",
+          "auth": {
+            "clientId": "<from-skill-install-screen>",
+            "clientSecret": "<from-skill-install-screen>"
+          }
+        }
       }
     }
-  }
-}
-```
+    ```
 
-For local dev, generate an HMAC-signed JWT against your dev secret. For production, you'd issue this through your Ory Hydra deployment per the [OAuth flow](/agents/oauth-flow).
+    3. Restart Claude Desktop. You'll see the Glide tool in the tools menu.
 
-### ChatGPT Apps
+    For other runtimes (ChatGPT Apps, Google Vertex, OpenClaw, Hermes), see [Runtimes](/agents/runtimes).
+  </Step>
+  <Step title="Talk to the agent">
+    Ask Claude something the skill can do. For Trip budget:
 
-Submit through the [Partner registry submission flow](/agents/partner-registries) once you've stood up `auth.<your-domain>` + verified `mcp.<your-domain>`.
+    > "I'm in Lisbon for the week with a $2,000 budget. How much have I spent?"
 
-### Google Vertex / OpenClaw / Hermes
+    Claude calls Glide's MCP server to read the relevant balances and recent transactions, computes the answer, and replies. You see the call in your audit feed in real time.
+  </Step>
+  <Step title="Watch the audit feed">
+    From your Glide dashboard, open **Agents &rarr; Activity feed**. You'll see every tool call: which agent, which tool, the redacted input and output digests, the risk verdict, the policy version that was in force.
 
-Same submission flow. Each pack has a `connector-manifest.json` template at `docs/designs/agent-distribution-partner-packs/<runtime>/`.
+    See [Receipts](/agents/receipts) for what each row means.
+  </Step>
+</Steps>
 
-## Three confused-deputy-isolated endpoints
+## What just happened
 
-| Endpoint | Tools | Trust scope |
-| --- | --- | --- |
-| `/mcp/read` | accounts, balances, transactions, agents, skills, audit stream | Read-only — no money movement |
-| `/mcp/write` | payments, cards, transfers, beneficiaries, x402 pay/receive, yield allocate | Money-touching; envelope-bound |
-| `/mcp/treasury` | grant issuance, signer rotation, kill-switch | Admin-only; principal explicit |
+You authorized a scoped sub-vault, installed a policy envelope, and gave Claude an OAuth token bound to that sub-vault. Every Claude tool call from here on:
 
-**Confused-deputy guard:** a `read` token cannot call `write` or `treasury` tools. The check fires BEFORE auth so a sniffed token from one endpoint can't probe the others.
+- Validates the OAuth grant (signature, expiry, audience).
+- Re-reads your tenant from the database (so a stolen grant on a stale tenant fails).
+- Evaluates the policy envelope (caps, allowlist, step-up).
+- Logs a receipt to your tamper-evident audit log.
 
-## Step-up via URL-mode elicitation
+If anything crosses a policy threshold, you get prompted to approve via [step-up](/agents/step-up).
 
-Tools that cross the policy envelope return JSON-RPC `-32003` with a `step_up_url`. The client surfaces that URL; the principal biometric-approves on the Glide web sheet at `localhost:3000/step-up/[sigil]`; the client retries the tool call with the returned `step_up_sigil`.
+## Test that the controls work
 
-Sigils are CAS-claimed first-use-only (F7 IRON RULE).
+Try asking the agent to do something outside the envelope. For Trip budget:
 
-## Where to next
+> "Send $5,000 to a counterparty I haven't allowlisted."
 
-- [OAuth flow](/agents/oauth-flow) — full RFC 7591 + 8707 + PKCE walk-through for production.
-- [Tool reference](/agents/tool-reference) — every tool's input + output schema.
-- [Self-hosting the agent platform](/agents/self-hosting) — Ory Hydra deploy + production posture.
-- [Money-safety contracts](/concepts/money-safety-contracts) — the F-rules every tool path observes.
+Claude will see the policy block, tell you it can't do that, and explain why (per-transaction cap, counterparty not allowlisted, etc.). The block is enforced by Glide's MCP server, not by Claude's prompt &mdash; even a jailbroken agent can't bypass it.
+
+## Next
+
+- [Skills catalog](/agents/skills/catalog)
+- [Policy envelope](/agents/policy-envelope)
+- [Step-up approvals](/agents/step-up)
+- [Runtimes](/agents/runtimes)

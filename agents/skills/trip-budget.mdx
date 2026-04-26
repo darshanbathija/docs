@@ -1,0 +1,51 @@
+---
+title: "Trip budget"
+description: "Read-only travel-spend tracker. Great as a first-time agent install &mdash; Claude tracks against a budget you set, no money movement."
+icon: "plane"
+---
+
+The Trip budget skill is the simplest way to see agent banking in action. It's read-only: Claude reads your card transactions tagged to a trip and answers questions about spend against a budget you set. Nothing moves; nothing requires approval. Perfect first install.
+
+## What it does
+
+You set up a trip in Glide:
+
+- **Destination** (e.g., Lisbon)
+- **Dates** (e.g., May 1&ndash;15)
+- **Budget** (e.g., $2,000)
+
+Tag the relevant card to the trip, or use a virtual card you issued just for the trip. Every charge auto-tags to the trip context.
+
+Now ask Claude things like:
+
+- "How much have I spent so far?"
+- "What's my biggest expense this week?"
+- "At my current pace, will I run over budget?"
+- "Categorize my spend &mdash; how much went to food vs hotels vs ground transport?"
+
+Claude calls Glide's read-only tools, gets the data, and answers.
+
+## What the agent can do
+
+- **`trip.list`** &mdash; list your active trips.
+- **`trip.balance`** &mdash; current spend, remaining budget, days left.
+- **`trip.transactions`** &mdash; transactions tagged to the trip.
+- **`trip.forecast`** &mdash; projected total spend at current pace.
+
+That's it. No `payments.*` tools. No `cards.*` modify tools. No `beneficiary.*` writes. The skill exists to give you a feel for what an MCP-connected agent looks like before you install one that touches money.
+
+## Why this is the right first skill
+
+- **Zero risk.** Nothing moves. Nothing approves. The worst-case outcome is Claude tells you the wrong number, which you'd catch anyway.
+- **Fast setup.** Install takes a minute. No vendor binding (no QBO, no Xero, no payroll provider).
+- **Familiar UX.** It's the kind of agent task you might have used elsewhere &mdash; "summarize this data" &mdash; but with structured access to your live banking data instead of a CSV you uploaded.
+
+## Try it before installing AP or Treasury
+
+If you're new to agent banking, install Trip budget first. Use it for a week. Get a feel for how the audit feed looks, how Claude calls the tools, what the policy envelope evaluates (even read-only tools have an envelope &mdash; it just has nothing to enforce). Then graduate to AP or Treasury once the pattern feels familiar.
+
+## Next
+
+- [Quickstart](/agents/quickstart)
+- [Receipts](/agents/receipts) &mdash; what the audit feed looks like.
+- [Skills catalog](/agents/skills/catalog)

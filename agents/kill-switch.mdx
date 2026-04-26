@@ -1,0 +1,84 @@
+---
+title: "Kill switch"
+description: "Halt every agent, every tool call, instantly. The reset button when something feels wrong."
+icon: "power-off"
+---
+
+If something feels off &mdash; an unfamiliar agent in your activity feed, a chain of step-ups you didn't trigger, anything &mdash; pull the kill switch. Every agent on your account stops in under one second. Every grant is invalidated. Every in-flight tool call gets rejected.
+
+You can resume specific agents one at a time once you've reviewed the feed.
+
+## How to trigger
+
+| From | How                                                            |
+| ---- | -------------------------------------------------------------- |
+| Web dashboard | **Agents &rarr; Halt all agents** (red button, top-right) |
+| Mobile app    | **Agents tab &rarr; Halt all** (long-press)               |
+| Push notification | If we detect a pattern that looks like agent abuse, we send a push with a one-tap halt. |
+| Voice         | "Hey Glide, stop all agents." (when voice is enabled)         |
+
+The halt is acknowledged in &lt;1s. You'll see a banner across every agent's activity feed: "All agents halted at &lt;timestamp&gt; by &lt;you&gt;."
+
+## What happens technically
+
+When you halt:
+
+1. Every active OAuth grant on your account is added to the revocation list.
+2. The MCP server starts rejecting every tool call from your account immediately, regardless of what the agent's grant says.
+3. In-flight transactions that haven't yet broadcasted are cancelled (e.g., a payment in the saga between proposed and broadcast is rolled back).
+4. Already-broadcast transactions can't be unrolled (that's how blockchains and bank rails work) but no further calls land.
+5. A `kill_switch` event is appended to your audit feed.
+
+The agent's chat experience is graceful: Claude or ChatGPT gets a structured "all calls rejected by halt" error, displays it as "the user halted all agents," and stops.
+
+## When to use it
+
+- You see a tool call you don't recognize.
+- The agent's behavior in chat suggests it's been jailbroken or hijacked.
+- You're about to leave for a long flight and want to be sure no agent runs while you're offline.
+- You're handing your phone to someone who shouldn't have access.
+- You're upgrading to a new policy envelope and want zero in-flight calls during the transition.
+- You just got a security alert from somewhere else and you're being cautious.
+
+The kill switch is the reset button. There's no penalty for using it; resuming is one tap per agent.
+
+## Resuming after a halt
+
+After you halt, every agent is in a "paused" state. Each one shows up in your activity feed with a **Resume** button. Tap it to:
+
+1. Issue a fresh OAuth grant (the old grant is permanently invalidated).
+2. Re-validate the agent's policy envelope (in case you tightened anything during the halt).
+3. Allow tool calls again.
+
+Resuming is per-agent. You can keep some agents halted indefinitely while resuming others.
+
+## Auto-halt: anomaly-triggered
+
+Glide also halts agents automatically if its anomaly detector trips a high-severity heuristic:
+
+- A burst of step-ups in a short window.
+- A novel-counterparty pattern (the agent suddenly trying to pay 10 different new beneficiaries).
+- A money-out velocity that's never been seen on this account before.
+- An on-chain destination flagged by sanctions screening.
+
+Auto-halts notify you via push. They behave the same as manual halts; you resume per-agent after reviewing.
+
+## Auto-halt vs step-up
+
+These are different mechanisms:
+
+- **Step-up** is "pause this single tool call until you approve." The agent waits at one specific call.
+- **Kill switch** (manual or auto) is "stop everything." Every agent, every tool call, every in-flight saga.
+
+A step-up that you decline is just a "no" to one call &mdash; the agent continues with other calls. A kill switch is a global stop.
+
+## What this isn't
+
+- **Not a hardware kill switch.** This is a software-layer stop, executed by Glide's MCP server. If you're worried about Glide's servers themselves being compromised, the answer is "we have multi-region failover and our own incident response," but the kill switch isn't a defense against that scenario.
+- **Not a way to recover already-broadcast on-chain transactions.** Once a USDC transfer is on-chain, blockchain finality applies. Kill switch stops future calls but doesn't unwind past ones.
+
+## Next
+
+- [Policy envelope](/agents/policy-envelope)
+- [Step-up approvals](/agents/step-up)
+- [Receipts](/agents/receipts)

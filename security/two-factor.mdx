@@ -1,0 +1,92 @@
+---
+title: "Two-factor authentication"
+description: "Passkeys, biometric step-up, and device attestation. Standard on every account; cannot be disabled below a minimum bar."
+icon: "lock"
+---
+
+Glide treats account security as the floor, not a setting. Every account has multi-factor authentication enabled at signin and biometric or passkey step-up for sensitive actions. You can raise the security bar above the default, but you can't lower it below.
+
+## Defaults
+
+Every Glide account ships with:
+
+- **Email + passkey signin** by default. WebAuthn passkey on web, biometric (Face ID, Touch ID) on mobile.
+- **Step-up on every outbound transfer** &mdash; biometric or passkey re-prompt before broadcast.
+- **Step-up on policy changes** &mdash; modifying your envelope, adding a beneficiary, etc.
+- **Step-up on agent tool calls** above your envelope threshold.
+- **Device attestation** &mdash; mobile app on iOS and Android verifies device integrity at signin to detect tampered runtimes.
+
+You don't have to configure any of this. It's the default behavior.
+
+## Adding extra factors
+
+Beyond the default, you can add:
+
+- **Hardware security keys** &mdash; YubiKey or any FIDO2-compliant key. Required if you've opted in to enhanced security mode.
+- **TOTP authenticator app** &mdash; backup factor for situations where your primary device isn't available. Not recommended as a primary factor (passkeys are stronger), but useful as a recovery option.
+- **Phone-number SMS verification** &mdash; we support this for backup-factor scenarios but **strongly recommend you don't rely on SMS** as a primary factor due to SIM-swap attack vectors.
+
+Configure these at **Settings &rarr; Security &rarr; Factors**.
+
+## Passkeys vs other factors
+
+Passkeys are the strongest factor we support:
+
+- They're phishing-resistant (the cryptographic challenge is bound to the origin domain).
+- They're SIM-swap-resistant (no phone-number dependency).
+- They're hardware-backed on modern devices (Secure Enclave on iOS, Strongbox on Android, TPM on Windows).
+- They sync across your devices via your platform's keychain (iCloud Keychain, Google Password Manager, 1Password, etc.) so a lost device doesn't lock you out.
+
+Default to passkeys unless you have a specific reason for an alternative.
+
+## Device attestation on mobile
+
+The Glide mobile app on iOS uses Apple's `DCAppAttestService`, and on Android uses Google's Play Integrity API. Both verify that the app is running on a genuine, non-tampered runtime. If the attestation fails (e.g., the app is running on a jailbroken device or in an emulator), some sensitive operations are restricted.
+
+This isn't about preventing all use on rooted/jailbroken devices &mdash; it's about ensuring high-stakes operations (large transfers, policy changes) only happen on attested-genuine runtimes. Read-only operations work regardless.
+
+## What step-up actually verifies
+
+Every step-up in the Glide app is a fresh biometric challenge:
+
+- On iOS: Face ID or Touch ID matched against the enrolled biometric.
+- On Android: fingerprint or face unlock matched against the device's secure biometric.
+- On web: passkey signature against your enrolled passkey, optionally with an additional hardware-key factor if you've enabled one.
+
+The challenge is bound to the specific operation you're approving (the amount, the recipient, the policy change). A captured biometric session can't be replayed to approve a different operation.
+
+## Recovery
+
+If you lose access to your primary factor (e.g., your phone is lost and you don't have iCloud Keychain syncing your passkey to another device), recovery goes through:
+
+1. **Backup factor** &mdash; if you've enrolled one (TOTP, hardware key, etc.), use it.
+2. **Account recovery flow** &mdash; email-link to a verified address, then liveness checks (selfie matched against your KYC photo), then a relationship-manager call for high-stakes accounts.
+
+Recovery typically takes 24&ndash;48 hours for personal accounts. Business accounts have a faster path through your relationship manager. We don't do "send password reset to email and you're back in" because account-takeover via email compromise is the most common attack vector.
+
+## Sessions
+
+A signed-in session lasts:
+
+- **Web** &mdash; 30 minutes idle, 24 hours absolute. After that, sign back in.
+- **Mobile** &mdash; biometric re-challenge on app open if &gt;15 minutes since last unlock.
+- **API and integrations** &mdash; OAuth tokens have shorter TTL (max 60 minutes) and refresh through the standard OAuth flow.
+
+You can see all active sessions at **Settings &rarr; Security &rarr; Sessions** and force-revoke any of them. Revocation is instant.
+
+## Suspicious-signin alerts
+
+You get a push notification on:
+
+- New device signin.
+- Signin from a new country.
+- Signin attempt that failed factor challenge.
+- Force-revoke of a session.
+
+If something looks wrong, tap the notification to lock the account &mdash; one tap freezes all active sessions and triggers a recovery flow.
+
+## Next
+
+- [Data and privacy](/security/data-privacy)
+- [KYC and AML](/security/kyc-aml)
+- [Step-up approvals (agent banking)](/agents/step-up)

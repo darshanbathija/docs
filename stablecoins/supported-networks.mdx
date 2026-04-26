@@ -1,0 +1,56 @@
+---
+title: "Supported networks"
+description: "The chains and assets we accept for deposits and withdrawals."
+icon: "circle-nodes"
+---
+
+Glide accepts stablecoin deposits and withdrawals on multiple chains. Pick the chain that's cheapest and fastest for you; the dashboard shows the deposit address for each network you've enabled.
+
+## Chains we support
+
+| Network | Confirmation time | Typical gas (USDC send) | Notes |
+| ------- | ----------------- | ----------------------- | ----- |
+| **Solana**       | &lt;5 seconds        | &lt;$0.01                  | Fastest and cheapest. Recommended for most deposits. |
+| **Base**         | 1&ndash;3 seconds    | $0.01&ndash;$0.10          | Coinbase's L2; great for moderate-frequency moves. |
+| **Polygon**      | 2&ndash;5 seconds    | $0.01&ndash;$0.05          | Wide wallet support, low fees. |
+| **Ethereum**     | 1&ndash;3 minutes    | $1&ndash;$10               | Use only when the source wallet doesn't support an L2. |
+| **Arbitrum**     | 1&ndash;5 seconds    | $0.05&ndash;$0.50          | Strong DEX liquidity, low fees. |
+| **Optimism**     | 1&ndash;5 seconds    | $0.05&ndash;$0.50          | Coinbase-aligned L2 ecosystem. |
+
+We add new chains as they reach the maturity bar we set for stablecoin custody. The current full list is in your dashboard under **Deposit &rarr; From crypto wallet**.
+
+## Picking the right network
+
+For most users, **Solana** or **Base** are the right choice. They settle in seconds, cost less than a cent, and both have wide USDC support across exchanges and wallets.
+
+Use **Ethereum mainnet** only if your source wallet doesn't support an L2. The gas cost is 10&ndash;100x higher and confirmation is slower; there's no benefit to mainnet for sending USDC if you have an alternative.
+
+## Send only the right asset to the right address
+
+Glide generates a deposit address per network. Each address accepts only the stablecoins we support **on that specific network**.
+
+<Warning>
+  Sending the wrong asset to a deposit address may result in **permanent loss**. Sending on the wrong network (e.g., a Solana USDC address with an Ethereum USDC transfer) means the deposit can take days to recover &mdash; and on some chain combinations, recovery isn't possible.
+
+  Always verify:
+  1. The asset (USDC vs USDT vs another stablecoin).
+  2. The network (Solana vs Ethereum vs Base, etc.).
+
+  Both must match the address Glide showed you.
+</Warning>
+
+## What we don't accept
+
+- **Non-stablecoin assets.** BTC, ETH, SOL, and other volatile cryptocurrencies are not accepted at Glide deposit addresses. If you send these, they're not credited; recovery requires a manual support ticket and may take weeks.
+- **Wrapped or bridged tokens with non-canonical issuers.** We accept only canonical USDC (Circle-issued) and canonical USDT (Tether-issued). Bridged variants from non-trusted issuers are not credited.
+- **Privacy-rail funds.** Funds that came through a sanctioned mixer or tumbler will be flagged on deposit and held pending review. See [Sanctions screening](/security/kyc-aml).
+
+## Network outages
+
+Blockchain networks occasionally have outages or congestion that delays settlement. If a network we support is down, you'll see a banner on the deposit screen with the current status and an estimated resumption time. Choose a different network in the meantime.
+
+## Next
+
+- [Stablecoins overview](/stablecoins/overview)
+- [Withdrawals](/stablecoins/withdrawals)
+- [Deposits](/money/deposits)

@@ -1,0 +1,85 @@
+---
+title: "Corporate cards"
+description: "Unlimited Visa cards for your team with per-employee limits, MCC restrictions, and instant freeze."
+icon: "credit-card"
+---
+
+Business accounts can issue unlimited corporate Visa cards. Each card has its own spending limit, merchant-category restrictions, region restrictions, and freeze controls. No per-card fees from Glide.
+
+## Issue a card
+
+<Steps>
+  <Step title="Open team cards">
+    From the dashboard, **Cards &rarr; Issue a card &rarr; for a teammate**. Pick the teammate (must be invited to the entity); they'll get a notification.
+  </Step>
+  <Step title="Configure the card">
+    Set:
+
+    - **Spending limit** &mdash; per-transaction, daily, monthly, lifetime.
+    - **MCC restrictions** &mdash; allowlist, denylist, or open. Travel-only? Software-only? Pick what fits.
+    - **Region restrictions** &mdash; specific countries, or open.
+    - **Funding currency** &mdash; default is USD, but you can pin to any currency the entity holds.
+  </Step>
+  <Step title="Pick virtual or physical">
+    Virtual is instant; the teammate can add it to Apple Pay or Google Pay immediately. Physical takes 5&ndash;10 business days.
+  </Step>
+  <Step title="Send to teammate">
+    The teammate sees the card in their dashboard. They can use the virtual immediately; the physical ships to the address they confirm.
+  </Step>
+</Steps>
+
+## What you can monitor in real time
+
+For every team card, you see:
+
+- Live transaction stream as authorizations arrive from Visa.
+- Per-card spend running total against the limits you set.
+- MCC distribution (where is the spend actually going?).
+- Region distribution (which country is each charge in?).
+- Out-of-policy attempts (a teammate trying to spend on a blocked MCC; the charge is denied at the network layer, but you see the attempt).
+
+## Common patterns
+
+### Vendor card
+
+A card with a single allowlisted MCC (or a single allowlisted merchant) and a tight monthly limit. Issued for a specific tool subscription or vendor relationship. Can't be used for anything else, even if the card details leak.
+
+### Travel card
+
+A card with a generous transaction limit, **MCC allowlist** for travel categories (airlines, hotels, restaurants, ground transport), and a **region allowlist** for the country the teammate is traveling to. Auto-expires (set lifetime limit equal to expected trip spend).
+
+### Default operating card
+
+A card with the entity's standard team-spend limit ($X/day, $Y/month), no MCC restrictions, no region restrictions. The teammate's general-purpose card.
+
+### Founder card
+
+Higher limits than team cards, possibly with multi-approval flow on charges over a threshold. For founders who occasionally need to handle larger one-off costs (legal fees, off-cycle vendor payments).
+
+## Foreign-transaction handling
+
+Glide doesn't add a foreign-transaction fee. When a teammate's card is charged in EUR while the card is funded in USD, the conversion happens at the live mid-market rate. The amount that comes out of the entity's USD balance is exactly the USD-equivalent of the EUR charge, no spread.
+
+## Freeze and replace
+
+Anyone with **Admin** or **Finance** role can freeze any card on the entity instantly. From **Cards &rarr; pick the card &rarr; Freeze**. Freeze is reversible; **Replace** issues a new PAN and permanently voids the old one.
+
+Auto-freeze on teammate removal is the default behavior &mdash; when you remove a teammate, their cards are frozen automatically. Override at **Settings &rarr; Team policy** if you want different behavior (e.g., keep the card live for 30 days post-departure to handle final reimbursements).
+
+## Reconciliation
+
+Card transactions sync into your accounting tool via the QuickBooks Online or Xero integration (read-only export of card transactions, categorized by MCC and per-card metadata). Auto-categorization handles the common cases; the rest goes to a "needs review" bucket.
+
+For accounts that don't use QBO or Xero, monthly CSV/PDF exports are available from **Cards &rarr; Statements**.
+
+## Disputes
+
+Same flow as a personal card. Anyone with Admin or Finance role can file a dispute on any team card. The card's holder gets notified that a dispute was filed.
+
+See [Disputes](/cards/disputes).
+
+## Next
+
+- [Card limits and controls](/cards/limits-and-controls)
+- [Apple Pay and Google Pay](/cards/apple-google-pay)
+- [Team and roles](/business/team-roles)

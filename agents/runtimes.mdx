@@ -1,0 +1,126 @@
+---
+title: "Supported runtimes"
+description: "Glide skills work in Claude Desktop, ChatGPT Apps, Google Vertex, OpenClaw, and Hermes. Same skill, same envelope, every runtime."
+icon: "circle-nodes"
+---
+
+Glide implements the open Model Context Protocol (MCP) for agent banking. That means a single Glide skill works across every MCP-compliant runtime &mdash; you install once, you run anywhere.
+
+## Currently supported
+
+<CardGroup cols={2}>
+  <Card title="Claude Desktop" icon="message">
+    Anthropic's official desktop client. The simplest setup; native MCP support. See the [quickstart](/agents/quickstart) for the JSON config.
+  </Card>
+  <Card title="ChatGPT Apps" icon="comment">
+    OpenAI's app surface. Glide is a published ChatGPT App; install from the Apps catalog and approve the Glide tool list.
+  </Card>
+  <Card title="Google Vertex" icon="cube">
+    Google Cloud's agent runtime. Add Glide as an external tool source in your Vertex agent configuration.
+  </Card>
+  <Card title="OpenClaw" icon="cubes">
+    The open-source agent orchestrator. Configure Glide as an MCP server in your OpenClaw runtime config.
+  </Card>
+  <Card title="Hermes" icon="paper-plane">
+    Hermes-based agent runtime. Glide's MCP endpoints work directly via Hermes's standard tool integration.
+  </Card>
+</CardGroup>
+
+## Same skill, every runtime
+
+When you install a Glide skill, the install is bound to your account, not to a specific runtime. The OAuth grant, the policy envelope, the audit feed &mdash; all live on Glide. The runtime is just the chat surface where you talk to the agent.
+
+That means:
+
+- Install the AP agent skill once.
+- Use it in Claude Desktop on your laptop.
+- Use it in ChatGPT Apps on your phone.
+- Use it in Google Vertex from a teammate's instance.
+- Every call lands in the same audit feed.
+- Every step-up appears in the same dashboard.
+
+If you replace one runtime with another, your skill keeps working. There's no re-onboarding cost when AI surfaces shift.
+
+## Runtime-specific install instructions
+
+### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "glide": {
+      "url": "https://mcp.glide.co",
+      "auth": {
+        "clientId": "<from-skill-install>",
+        "clientSecret": "<from-skill-install>"
+      }
+    }
+  }
+}
+```
+
+Add this to your Claude Desktop config under **Settings &rarr; Developer &rarr; Edit Config**. Restart Claude Desktop.
+
+### ChatGPT Apps
+
+In ChatGPT, go to **Settings &rarr; Apps &rarr; Add app**. Search for "Glide." Approve the Glide tool list when prompted; the OAuth handoff completes inside the app sheet.
+
+### Google Vertex
+
+In your Vertex agent config, add Glide as an external tool source:
+
+```yaml
+tools:
+  - source: mcp
+    url: https://mcp.glide.co
+    auth:
+      type: oauth_2.1
+      client_id: <from-skill-install>
+      client_secret: <from-skill-install>
+      authorization_server: https://auth.glide.co
+```
+
+### OpenClaw
+
+In your OpenClaw runtime config:
+
+```yaml
+mcp_servers:
+  - name: glide
+    transport:
+      type: http
+      url: https://mcp.glide.co
+    auth:
+      type: oauth
+      client_id: <from-skill-install>
+      client_secret: <from-skill-install>
+```
+
+### Hermes
+
+Glide's MCP endpoint works as a standard Hermes tool source. Use the same URL and OAuth client credentials Glide showed you at skill install time.
+
+## Runtime feature differences
+
+Most runtimes support every Glide tool. A few feature-level differences worth knowing:
+
+| Feature                       | Claude | ChatGPT | Vertex | OpenClaw | Hermes |
+| ----------------------------- | ------ | ------- | ------ | -------- | ------ |
+| Inline step-up prompts        | Yes    | Yes     | Yes    | Yes      | Yes    |
+| URL-mode step-up fallback     | n/a    | n/a     | n/a    | yes      | yes    |
+| Voice-mode tool calls         | n/a    | Yes     | n/a    | Yes      | n/a    |
+| Long-context skill chaining   | Yes    | Partial | Yes    | Yes      | Yes    |
+
+URL-mode step-up is used when the runtime can't render an interactive prompt &mdash; you tap a link to approve in the Glide dashboard or app instead.
+
+## Adding a new runtime
+
+If you're using an MCP-compliant runtime that's not on this list, Glide's MCP endpoints are public-spec. Configure your runtime to point at `https://mcp.glide.co` with OAuth 2.1 + PKCE; everything else follows the standard.
+
+If you're building a runtime and want to make sure Glide skills work first-class on it, talk to us at [hi@glide.co](mailto:hi@glide.co).
+
+## Next
+
+- [Quickstart](/agents/quickstart)
+- [Policy envelope](/agents/policy-envelope)
+- [Skills catalog](/agents/skills/catalog)

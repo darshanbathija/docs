@@ -1,0 +1,74 @@
+---
+title: "Policy envelope"
+description: "The contract between you and the agent. Per-transaction caps, daily caps, counterparty allowlists, step-up thresholds, time windows."
+icon: "shield"
+---
+
+Every agent runs inside a policy envelope. The envelope is the contract: this is what's allowed, this is what isn't, this is what asks first. Glide enforces it on every tool call, regardless of what the agent's prompt says.
+
+Think of it like spending controls on a corporate card &mdash; but with sharper teeth, applied at the API layer instead of the network layer.
+
+## What the envelope controls
+
+| Control                         | What it means                                              | Example default              |
+| ------------------------------- | ---------------------------------------------------------- | ---------------------------- |
+| **Per-transaction max**         | Largest single transaction the agent can propose           | $2,500                       |
+| **Daily cap**                   | Maximum total transaction value in 24 hours                | $10,000                      |
+| **Counterparty allowlist**      | Who the agent can pay; everyone else is blocked            | Your existing vendor list    |
+| **Step-up threshold**           | Above this amount, you have to approve via Face ID / passkey | $0 (every transaction asks)  |
+| **Time window**                 | Hours of day or days of week the agent can transact        | Business hours, weekdays     |
+| **Velocity cap**                | Max number of transactions in a rolling time window        | 20 / hour                    |
+| **Risk verdict gate**           | Block if the anomaly detector flags                        | Flag &rarr; block automatically |
+
+You set these at install time. Most skills have sensible defaults; you can override anything.
+
+## How enforcement works
+
+When the agent calls a Glide tool (e.g., `payments.initiate`), the request goes to Glide's MCP server. The server runs the request through:
+
+1. **Grant validation** &mdash; OAuth token is signature-verified and not expired.
+2. **Fresh-read tenant check** &mdash; we re-read your tenant from the database, so a stolen grant against a stale tenant fails.
+3. **Policy evaluation** &mdash; the request is checked against every axis above. Any failure blocks the call.
+4. **Step-up check** &mdash; if the request crosses a threshold, you get a step-up prompt; the agent waits for your approval.
+5. **Anomaly check** &mdash; the risk model evaluates the request against your account's history. A `flag` verdict pauses for review; a `block` verdict rejects.
+6. **Receipt write** &mdash; the call is logged with redacted input + output digests, the policy version that was in force, and the verdict.
+
+If any step fails, the agent gets a structured error explaining why. No silent failures, no half-applied changes.
+
+## Versioning the envelope
+
+Every change to your policy envelope bumps the **`policy_version`** counter. Tool calls in flight when you make a change see a `PolicyStaleError` on their next attempt &mdash; they have to fetch the new envelope and retry. This guarantees your envelope changes take effect immediately, with no race window.
+
+The version is also logged in every receipt. When you replay an old call later, you can see exactly which envelope was in force at the time.
+
+## What you cannot configure
+
+A few defaults are immutable:
+
+- **Sanctions screening always runs.** You can't disable it. Every counterparty and every on-chain destination is screened on every call.
+- **The append-only audit log.** You can't delete or modify receipts. Even Glide can't modify them outside a strict DSAR redaction flow.
+- **Max grant TTL of 60 minutes.** Beyond that, the agent has to refresh its OAuth grant.
+
+These exist because the alternative (a self-hostable backdoor) is exactly what trust-building infrastructure can't have.
+
+## Per-skill envelope templates
+
+Each skill ships with a recommended envelope template. The template is a starting point that's been tuned for the skill's typical use:
+
+- **AP agent** &mdash; per-tx $2,500, daily $10,000, allowlist = QBO/Xero vendors, step-up every payment.
+- **Treasury** &mdash; per-tx $50,000, daily $200,000, allocation min/max per strategy, step-up &gt;$25k.
+- **Market research cap** &mdash; per-tx $100, monthly $1,000, no allowlist (any merchant), step-up &gt;$50.
+
+You can override any template field at install. The defaults are the safest starting point; tighten or loosen them based on your actual use.
+
+## Changing the envelope after install
+
+Open **Agents &rarr; pick the agent &rarr; Policy** in your dashboard. Edit any axis. The change applies immediately on the next agent tool call (in-flight calls see `PolicyStaleError` and retry against the new envelope).
+
+Big envelope loosenings (e.g., 10x bump on the daily cap) require step-up before they save. We don't want a stolen session changing your envelope as a precursor to a malicious tool call.
+
+## Next
+
+- [Step-up approvals](/agents/step-up)
+- [Receipts](/agents/receipts)
+- [Kill switch](/agents/kill-switch)

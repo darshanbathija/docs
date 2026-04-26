@@ -1,0 +1,64 @@
+---
+title: "Stablecoins"
+description: "Deposit USDC and USDT on-chain, hold them alongside fiat, convert in seconds, withdraw to any wallet you control."
+icon: "link"
+---
+
+Glide treats stablecoins as a first-class balance, not an exotic side feature. Your USDC and USDT live in your dashboard next to your USD, EUR, and GBP. You convert between them with one tap. You spend either with the same Visa card.
+
+## Why stablecoins
+
+For some people, stablecoins are how they get paid. Crypto-native companies, freelancers working with global clients, and anyone moving money across borders that don't have great banking corridors all benefit from a balance that:
+
+- Settles in seconds, not days.
+- Costs cents in network fees, not 3&ndash;5% in remittance margins.
+- Works the same way in every country.
+
+Glide bridges that on-chain liquidity to a regulated bank account, a Visa card, and 80+ currencies of fiat conversion. You don't have to choose between crypto-native and bank-grade.
+
+## What you can do
+
+<CardGroup cols={2}>
+  <Card title="Deposit" icon="arrow-down-to-line" href="/money/deposits">
+    Send USDC or USDT to your Glide deposit address. Settled in seconds.
+  </Card>
+  <Card title="Convert" icon="arrow-right-arrow-left" href="/money/fx">
+    Tap convert to swap stablecoin to fiat (or any direction) at the live rate.
+  </Card>
+  <Card title="Spend" icon="credit-card" href="/cards/overview">
+    Spend stablecoin balances directly with your Visa card. Auto-converts at point-of-sale.
+  </Card>
+  <Card title="Withdraw" icon="arrow-up-from-bracket" href="/stablecoins/withdrawals">
+    Send to any external wallet you control. Network gas only.
+  </Card>
+</CardGroup>
+
+## Supported assets
+
+Glide supports the following stablecoins on the chains listed in [Supported networks](/stablecoins/supported-networks):
+
+- **USDC** &mdash; Circle's USD-pegged stablecoin. Most liquid, lowest fees on most chains, primary recommended deposit asset.
+- **USDT** &mdash; Tether's USD-pegged stablecoin. Widely supported across chains; we accept it on the chains where compliance permits.
+- **Other USD stablecoins** &mdash; we add new assets as they meet our compliance criteria. See the in-dashboard list at **Deposit &rarr; From crypto wallet** for the current set.
+
+We do not custody volatile crypto-assets &mdash; no BTC, ETH, SOL, or non-stablecoin tokens are held on Glide. The stablecoin support is specifically about USD-pegged liquidity.
+
+## Holding vs converting
+
+When you deposit USDC, it stays as USDC unless you convert it. Your dashboard balance shows your stablecoin holdings separately from your fiat balances, so you always know exactly what you have.
+
+If you'd rather auto-convert every stablecoin deposit to fiat the moment it lands, enable **Settings &rarr; Stablecoins &rarr; Auto-convert on deposit** and pick a target fiat currency. Useful if you only use the stablecoin rail to receive money and want everything as USD or EUR by default.
+
+## Spending from a stablecoin balance
+
+Your Glide card pulls from the right balance automatically. If you have USDC and the merchant charges in USD, we settle from USDC at parity. If you have USDC and the merchant charges in EUR, we convert at the mid-market rate. Either way, the experience at the terminal is the same as any other card.
+
+## Your stablecoins are not commingled
+
+The USDC you hold is held in dedicated custody on-chain or via Glide's banking partners' segregated stablecoin reserves &mdash; never pooled with other customers' deposits, never lent out. See [Segregated banking](/security/segregated-banking).
+
+## Next
+
+- [Supported networks](/stablecoins/supported-networks)
+- [Withdrawals](/stablecoins/withdrawals)
+- [Deposits](/money/deposits)

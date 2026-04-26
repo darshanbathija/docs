@@ -1,0 +1,78 @@
+---
+title: "Treasury"
+description: "Let Claude allocate idle USDC across yield strategies you've pre-approved. Every reallocation goes through your policy envelope."
+icon: "chart-line"
+---
+
+The Treasury skill connects Claude to a portion of your USDC reserves and lets it propose allocation moves between yield strategies you've pre-approved. The agent doesn't pick the strategies &mdash; you do, at install time. The agent moves money between them when conditions you've described to it warrant it.
+
+## Who this is for
+
+- Crypto-native companies holding USDC treasury that want a smarter "is the money working" loop.
+- Finance teams whose CFO wants to delegate "rebalance to keep us at the target yield mix" without delegating manual approval.
+- Founders with $250k+ idle USDC who want T-bill or money-market yield without manually rebalancing every week.
+
+## How it works
+
+When you install the Treasury skill, you pick:
+
+1. **The funding sub-vault** &mdash; a slice of your USDC treasury the agent can move.
+2. **The approved strategies** &mdash; a list of yield destinations Glide already supports (T-bill funds, money-market funds, on-chain yield products on the canonical issuer list).
+3. **The allocation envelope** &mdash; min and max percentages for each strategy.
+4. **The reallocation cadence** &mdash; max moves per day or per week.
+
+The agent can propose moves between strategies. The envelope enforces that no single strategy can exceed its max, no strategy can drop below its min, and no more than the cadence cap of moves can happen.
+
+## What the agent can do
+
+- **`treasury.balance`** &mdash; see the current allocation across approved strategies.
+- **`treasury.simulate`** &mdash; dry-run a reallocation to see expected APY change.
+- **`treasury.allocate`** &mdash; propose a reallocation between approved strategies.
+- **`audit.stream`** &mdash; watch its own activity live.
+
+The agent cannot:
+
+- Add new strategies (the strategy allowlist is yours; changing it requires you in the dashboard).
+- Move funds out of treasury entirely (the funding sub-vault is locked to the strategies; outbound moves to your operating account require you).
+- Touch any other balance.
+
+## Typical flow
+
+> **You:** What's our treasury yield this month?
+>
+> **Claude:** [calls treasury.balance] Allocation:
+>   - T-bill fund &mdash; 60% &mdash; 5.2% APY
+>   - Money-market fund &mdash; 30% &mdash; 5.0% APY
+>   - On-chain USDC vault &mdash; 10% &mdash; 5.8% APY
+>
+> Blended: 5.18% APY
+>
+> **You:** Can we do better?
+>
+> **Claude:** The on-chain vault is at the upper bound (10% max per envelope). T-bill is yielding higher than the money-market right now. Proposing: shift 10% from money-market to T-bill, blended APY &rarr; 5.20%.
+>
+> [calls treasury.simulate] Impact: +$2,083/month at $250k treasury. Step-up required (move &gt;$25k threshold).
+>
+> **You:** Approve.
+
+The reallocation runs. The audit row lands. Next month you can ask Claude to do the same review.
+
+## Compliance and risk
+
+- The Treasury skill operates on **stablecoin balances only** &mdash; not on volatile crypto-assets and not on fiat operating cash.
+- Every approved strategy is one Glide already supports for treasury. The skill doesn't introduce new risk surfaces; it gives you a faster way to optimize within Glide's existing yield product.
+- Reallocation moves above your step-up threshold require your explicit approval. The default threshold is $25,000 per move; tighten it at install if you want every move to ask.
+
+## When this skill makes sense
+
+- You hold &gt;$250k idle USDC.
+- You've decided which strategies you're comfortable with.
+- You want a faster review/rebalance loop than monthly manual rebalancing.
+
+If you're unsure which strategies to allowlist, talk to your relationship manager &mdash; they can walk through what fits your risk profile.
+
+## Next
+
+- [Quickstart](/agents/quickstart)
+- [Policy envelope](/agents/policy-envelope)
+- [Skills catalog](/agents/skills/catalog)

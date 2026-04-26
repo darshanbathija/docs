@@ -1,0 +1,96 @@
+---
+title: "KYC and AML"
+description: "Continuous sanctions screening, transaction monitoring, and KYC verification on every account."
+icon: "user-check"
+---
+
+KYC (Know Your Customer) and AML (Anti-Money Laundering) are the regulatory frameworks that determine who can open an account and what counts as normal vs suspicious activity. Glide's approach: do the work properly so you're not surprised, document it transparently so you understand what we check, and don't add gold-plated friction beyond what regulation requires.
+
+## What we check on opening
+
+For a personal account:
+
+- **Government-issued ID** &mdash; passport, driver's license, or national ID.
+- **Live selfie** &mdash; matched biometrically against the ID photo.
+- **Country of residence** &mdash; verified against the ID country and any address proof we ask for in higher-tier KYC.
+- **Sanctions screening** &mdash; your name + DOB + country are checked against global sanctions lists (UN, OFAC, HMT, EU, MAS, HKMA).
+
+For a business account, additionally:
+
+- **KYB on the entity** &mdash; legal name, registration number, country of incorporation, regulatory status if applicable.
+- **Beneficial owner KYC** &mdash; for any individual with &gt;25% ownership.
+- **Business activity description** &mdash; we use this to set transaction-monitoring baselines (a remittance company has different patterns than a SaaS).
+
+## Tiers of KYC
+
+| Tier              | What's checked                       | What unlocks |
+| ----------------- | ------------------------------------ | ------------ |
+| Crypto-only       | None                                  | Stablecoin deposits and withdrawals up to $10,000 lifetime |
+| Standard          | ID + selfie + sanctions               | Fiat deposits, card issuance, full Glide feature set |
+| Enhanced          | Standard + address proof + activity baseline | Higher per-transaction and monthly limits |
+| Enhanced + EDD    | Enhanced + source-of-funds + relationship manager | Highest tier; for large-volume users or higher-risk activity |
+
+You move up tiers automatically when activity warrants, or on request. Most users sit at Standard indefinitely.
+
+## Continuous sanctions screening
+
+Sanctions screening doesn't stop after onboarding. We re-screen:
+
+- Every counterparty on every outbound payment.
+- Every on-chain destination address against the chain-analytics provider's flagged-cluster lists.
+- Every account holder periodically against updated sanctions lists.
+
+If a screening hit triggers, the relevant transaction (or, in some cases, the account) pauses pending review. You'll see a clear notice in the dashboard explaining what triggered and what's needed to resolve. Most resolutions are same business day; we don't hold accounts indefinitely without explanation.
+
+## Transaction monitoring
+
+Beyond sanctions, we run **transaction monitoring** &mdash; pattern analysis that flags transactions that look unusual against:
+
+- Your account's baseline (declared activity, historical patterns).
+- Industry-typical behavior for your business type.
+- Known patterns of laundering, fraud, and account-takeover.
+
+A flag is not a block. Most flags resolve into "this is fine, the model didn't recognize it." A small fraction escalate to manual review. An even smaller fraction become regulatory reports filed with the appropriate authority.
+
+## What we report
+
+In some jurisdictions, we're required to report:
+
+- **Threshold reports** &mdash; transactions above local-law thresholds (e.g., $10,000 in cash-equivalent in some jurisdictions).
+- **Suspicious activity reports (SARs)** &mdash; transactions that meet local-law suspicion criteria.
+
+Filing a SAR doesn't mean you've done something wrong. It means a pattern matched a regulator-defined trigger. We file as required by law and we don't notify you (because the reports are confidential by design, in every jurisdiction).
+
+## What we don't do
+
+- **Don't share your transaction data with adtech, credit bureaus, or commercial counterparties.**
+- **Don't sell our anti-fraud signals as a service.**
+- **Don't freeze accounts capriciously.** A freeze always has a documented reason and a documented resolution path. You get notified at freeze time with the reason in plain English.
+- **Don't deny based on country of birth or nationality.** We deny based on documented compliance criteria (sanctions, country of residence in OFAC-sanctioned territory). Your nationality alone isn't a deny criteria.
+
+## How false positives are handled
+
+Sanctions screening isn't perfect. Common-name false positives (someone shares a name with a sanctioned individual) happen. When they do:
+
+- The transaction holds while we verify identity disambiguation (typically same business day).
+- We may ask for a copy of an ID to confirm you're not the sanctioned individual.
+- Once confirmed, the transaction releases and the false-positive flag is suppressed for future transactions on the same account.
+
+We track our false-positive rate quarterly and share it in the regulatory snapshot.
+
+## Reporting fraud or unauthorized activity
+
+If you see activity on your account you didn't authorize, report it immediately:
+
+- **In-app** &mdash; **Security &rarr; Report fraud**. This routes to a dedicated fraud queue.
+- **Email** &mdash; security@axtior.com.
+- **Phone** &mdash; for high-stakes situations, your relationship manager (business accounts) or our 24/7 fraud line (in-app).
+
+Provisional account freeze and credit reversal are typically same-day for clear fraud.
+
+## Next
+
+- [Identity verification](/accounts/identity)
+- [Two-factor authentication](/security/two-factor)
+- [Data and privacy](/security/data-privacy)
+- [Regulatory](/security/regulatory)

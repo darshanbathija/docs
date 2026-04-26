@@ -1,0 +1,62 @@
+---
+title: "Vendor payments"
+description: "Pay vendors via wire, ACH, SEPA, SWIFT, or USDC. Same dashboard. Same approval flow. Same audit trail."
+icon: "file-invoice"
+---
+
+Vendor payments work the same as any other Glide outbound transfer &mdash; you pick the rail, you set the recipient, the dashboard quotes the rate and fee, you approve. The business-specific layer is the **approval workflow** and the **vendor allowlist**.
+
+## Vendor allowlist
+
+Most businesses pay a recurring set of vendors. Add each one to your allowlist:
+
+- **Vendor name** &mdash; what you'll see in the dashboard and your reports.
+- **Account details** &mdash; bank account, IBAN, USDC wallet, etc.
+- **Default rail** &mdash; the rail you'll use most often (override per payment).
+- **Default currency** &mdash; what they want paid in.
+
+Once allowlisted, future payments are one-tap: pick the vendor, enter the amount, confirm.
+
+## Multi-approval on vendor payments
+
+The same threshold-based approval flow applies. Default thresholds (override at **Settings &rarr; Approvals**):
+
+- **&lt;$10,000:** single-Operator approval.
+- **$10,000&ndash;$100,000:** Finance + one other.
+- **&gt;$100,000:** Finance + Admin.
+
+For vendors paid frequently below the threshold, set up a **standing approval** &mdash; pre-approved amounts and cadence that don't trigger per-payment review. Useful for SaaS subscriptions, recurring contractor payments, etc.
+
+## Integration with QuickBooks Online and Xero
+
+Glide reads invoices from QBO and Xero (one-way: read-only on the QBO/Xero side; you keep your existing accounting tool as the system of record). When an invoice comes due, the dashboard surfaces it in your **Vendor payments &rarr; Due** view. Pay it from there with the rail and approval flow you've configured.
+
+This is the same integration the [AP agent skill](/agents/skills/ap-agent) uses &mdash; if you'd like to layer agent-driven drafting on top, install that skill. The underlying integration is the same; the skill just adds an LLM-based pre-screen.
+
+## Cross-border vendor payments
+
+For international vendors, you have three rails:
+
+- **USDC** &mdash; if the vendor accepts crypto. Settled in seconds, near-zero gas, no FX margin. Best for crypto-native contractors and global teams who'd rather hold USDC than local fiat.
+- **Local rail in the vendor's country** &mdash; via Glide's coverage of 80+ corridors. SEPA in EU, Faster Payments in UK, ACH in US, FAST in SG, FPS in HK, etc. Settles in minutes for instant rails, hours for batched rails.
+- **SWIFT** &mdash; for vendors in countries we don't have a direct local rail to. 1&ndash;3 business days. Glide takes a flat sender fee; intermediary banks may deduct.
+
+The dashboard suggests the cheapest, fastest rail for each corridor at quote time. Override if you have a reason.
+
+## Reconciliation
+
+Every vendor payment exports back to QBO or Xero as a paid invoice with the matched reference. Auto-reconciliation handles the typical case; the unusual cases land in a "needs review" bucket.
+
+For accounts not on QBO or Xero, monthly CSV/PDF exports are available from **Vendor payments &rarr; Statements**.
+
+## What happens if a payment fails
+
+Bank rails occasionally bounce. If a payment fails for a recoverable reason (incorrect account number, recipient bank rejected the wire, etc.), the funds return to your Glide account and the payment lands in the "failed" tab with the bank's reason code. Re-attempt with corrected details.
+
+For unrecoverable failures (recipient account closed and funds unable to be returned), the audit trail tracks the chain of events; recovery is between you and your bank.
+
+## Next
+
+- [AP agent skill](/agents/skills/ap-agent)
+- [Send money](/money/send)
+- [Team and roles](/business/team-roles)

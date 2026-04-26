@@ -1,0 +1,77 @@
+---
+title: "AP agent"
+description: "Let Claude or ChatGPT read invoices from QuickBooks Online or Xero and draft vendor payments inside a policy envelope you set."
+icon: "file-invoice-dollar"
+---
+
+The AP (accounts payable) agent skill connects Glide to your QuickBooks Online or Xero account, reads pending invoices, and lets a chat agent (Claude Desktop or ChatGPT Apps) draft payments against an allowlisted vendor set. Every payment crosses your envelope check; every payment requires your approval before broadcast.
+
+## Who this is for
+
+- Solo founders running their own AP through QBO or Xero who want a fast pre-screen of pending bills.
+- Finance teams who want to give their CEO a "show me what's due, draft the payments, I'll approve" agent.
+- Agencies and crypto-native companies paying global contractors via stablecoin.
+
+## What gets installed
+
+When you install the AP agent skill, Glide creates:
+
+- A **scoped sub-vault** with the funding currency you pick (USDC by default, or any fiat balance).
+- A **policy envelope** with these defaults:
+  - Per-transaction cap: $2,500
+  - Daily cap: $10,000
+  - Counterparty allowlist: your existing QBO/Xero vendor list
+  - Step-up: every payment above $0 requires your approval
+- A **partner OAuth binding** to QBO or Xero (you authorize Glide to read invoices on your behalf).
+- An **MCP grant** the agent uses to call Glide's payment-proposal tool.
+
+You can override every default at install. The defaults are tuned for solo founders; bump them up for higher-volume use.
+
+## What the agent can do
+
+- **`accounts.list`** &mdash; see your AP sub-vault balance.
+- **`payments.simulate`** &mdash; dry-run a payment to check the fee, the FX rate, and the policy verdict.
+- **`payments.initiate`** &mdash; propose a payment to a counterparty in the allowlist.
+- **`beneficiary.write`** &mdash; add a vendor to the allowlist (this triggers a step-up since it changes your policy surface).
+- **`audit.stream`** &mdash; watch the live audit feed of its own actions.
+
+The agent can **read your QBO/Xero invoices** and **propose payments**. It cannot move money on its own &mdash; every payment proposal pauses for your approval until you tap approve in the dashboard or app.
+
+## How a typical flow looks
+
+> **You (in Claude Desktop):** What invoices are due this week?
+>
+> **Claude:** [calls QBO read tool] You have 3 invoices due:
+>   - Acme Logistics &mdash; $1,200 &mdash; due Wednesday
+>   - DataDog &mdash; $89 &mdash; due Thursday
+>   - Mailchimp &mdash; $499 &mdash; due Friday
+>
+> **You:** Draft payments for all three.
+>
+> **Claude:** [calls payments.simulate for each, then payments.initiate for each]
+>   - Drafted: Acme Logistics $1,200 to allowlisted vendor &mdash; awaiting your approval
+>   - Drafted: DataDog $89 to allowlisted vendor &mdash; awaiting your approval
+>   - Drafted: Mailchimp $499 to allowlisted vendor &mdash; awaiting your approval
+>
+> **You (in Glide app):** Approve all three with Face ID.
+
+The three payments broadcast. Receipts land in your audit feed. The agent confirms back in chat.
+
+## Compliance notes
+
+- The OAuth binding to QBO/Xero is owned by you. Glide doesn't share or relay your QBO credentials anywhere; the binding is a standard partner OAuth grant.
+- Every drafted payment runs through Glide's standard sanctions screening on the destination beneficiary. If a vendor is on a sanctions list, the payment is blocked at the policy layer; the agent sees the block, you see the audit row.
+- The agent's MCP grant has a 60-minute max TTL. Long sessions auto-refresh through the OAuth refresh flow; if your session is idle for &gt;60 minutes, the agent re-authenticates before the next call.
+
+## What this isn't
+
+- **Not autonomous.** The agent never broadcasts a payment without your explicit approval.
+- **Not a replacement for your accountant.** This is a pre-screen tool that reduces clicks; it's not a final review.
+- **Not unlimited scope.** The agent only sees the AP sub-vault and the QBO vendor list. It can't reach the rest of your Glide account or your QBO data outside vendors and invoices.
+
+## Next
+
+- [Quickstart](/agents/quickstart)
+- [Policy envelope](/agents/policy-envelope)
+- [Step-up approvals](/agents/step-up)
+- [Skills catalog](/agents/skills/catalog)

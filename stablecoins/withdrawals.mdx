@@ -1,0 +1,76 @@
+---
+title: "Withdrawals"
+description: "Send your stablecoins to any external wallet you control. Network gas only; no fee from Glide."
+icon: "arrow-up-from-bracket"
+---
+
+You can withdraw your stablecoin balance to any external wallet at any time. There's no Glide fee on withdrawals; you pay only the network gas required to broadcast the transaction.
+
+## Withdraw a stablecoin
+
+<Steps>
+  <Step title="Open the send screen">
+    From the dashboard, tap **Send &rarr; Stablecoin transfer**.
+  </Step>
+  <Step title="Pick the asset and network">
+    Choose the stablecoin (USDC or USDT) and the network you want to withdraw on. The dashboard shows your balance per asset and per network.
+  </Step>
+  <Step title="Paste the destination address">
+    Enter the wallet address you want to send to. Glide validates the address checksum and warns if the network looks wrong.
+
+    <Tip>
+      First-time withdrawals to a new address require step-up verification (Face ID, passkey, or your two-factor method). Subsequent sends to the same address skip the step-up unless your security settings require it every time.
+    </Tip>
+  </Step>
+  <Step title="Review and confirm">
+    See:
+
+    - The amount you're sending.
+    - The network gas cost in USD-equivalent.
+    - The arrival amount at the destination.
+    - The expected confirmation time for the chosen network.
+
+    Tap **Confirm**. The transaction broadcasts; you can track the on-chain hash in the dashboard right after.
+  </Step>
+</Steps>
+
+## How long it takes
+
+| Network         | Confirmation time |
+| --------------- | ----------------- |
+| Solana          | &lt;5 seconds        |
+| Base            | 1&ndash;3 seconds    |
+| Polygon         | 2&ndash;5 seconds    |
+| Arbitrum        | 1&ndash;5 seconds    |
+| Optimism        | 1&ndash;5 seconds    |
+| Ethereum        | 1&ndash;3 minutes    |
+
+Fully on-chain finality (the point past which a re-org is essentially impossible) takes a bit longer on some chains. Most exchanges and DeFi protocols will credit your withdrawal as soon as the first confirmation lands.
+
+## Withdrawal limits
+
+Withdrawal limits follow your account tier. See [Limits and fees](/money/limits-and-fees) for the table.
+
+For very large withdrawals (above your standard tier), you'll trigger an enhanced-review flow that asks for a quick confirmation by email or relationship-manager call. Most large withdrawals clear within an hour of the confirmation.
+
+## Withdrawals to flagged addresses
+
+Glide screens every withdrawal destination against on-chain analytics. If the destination address is associated with a sanctioned entity, mixer, or known fraud cluster, the withdrawal is held pending review. You'll see a clear message explaining why; we follow up by email with whatever next-step you need.
+
+This is not a "we'll randomly block you" pattern. We block fewer than 0.1% of withdrawals, and almost all of those are obvious match-ups against published sanctions lists.
+
+## What we don't do
+
+- **No reversible withdrawals.** Once you confirm, the transaction broadcasts. Glide can't pull it back. If you sent to the wrong address, recovery is on the receiving side, not on us.
+- **No internal-only stablecoin transfers.** If you want to send to another Glide user, use [Glide-to-Glide transfers](/money/send) instead &mdash; faster and free.
+- **No fee tier discounts.** Network gas is what it is. We don't pad the gas estimate; you see the actual market rate.
+
+## Network outages
+
+If the network you've selected is down or massively congested, the dashboard shows a banner with the current status. Choose a different network if your destination supports one.
+
+## Next
+
+- [Stablecoins overview](/stablecoins/overview)
+- [Supported networks](/stablecoins/supported-networks)
+- [Send money](/money/send)
