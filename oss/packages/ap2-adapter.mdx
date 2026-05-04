@@ -1,0 +1,154 @@
+---
+title: "@glideco/ap2-adapter"
+description: "Wire-format encoder/decoder for Google AP2 (Agent Payments Protocol) v0.1-alpha. Projects Glide grants + policy envelopes onto AP2 Verifiable Digital Credentials."
+icon: "id-card"
+---
+
+Wire-format adapter between Glide's internal grant model and the Agent Payments
+Protocol (AP2), a three-mandate Verifiable Digital Credential (VDC) framework
+co-authored by Google with 60+ endorsing partners including AmEx, Mastercard,
+PayPal, Adyen, Coinbase, and Shopify. The three mandate types are
+IntentMandate (user authorizes agent), CartMandate (agent proposes a basket),
+and PaymentMandate (user instructs settlement).
+
+This package is a wire-format adapter, not a re-implementation of the AP2 spec.
+When AP2 ships v0.2 or any breaking wire change, a new minor is published,
+`AP2_SPEC_VERSION` is bumped in the same PR, and the round-trip property tests
+are re-run. The `@glideco/schemas` `AgentPolicyEnvelope` (14-axis) is a strict
+superset of what AP2 0.1 can express; axes that have no AP2 vocabulary are
+preserved under the `glide:` extension namespace.
+
+## Install
+
+```bash
+npm install @glideco/ap2-adapter
+```
+
+[npmjs.com/package/@glideco/ap2-adapter](https://www.npmjs.com/package/@glideco/ap2-adapter)
+
+## Why a thin encoder rather than a native AP2 library?
+
+Glide's `agent_grants` + `AgentPolicyEnvelope` predates AP2 and covers
+counterparty allowlists, velocity multipliers, per-tx step-up thresholds, and
+MCC blocklists that AP2 0.1 has no vocabulary for. Rewriting around AP2
+primitives would lose that expressiveness. Instead the encoder is deliberately
+lossy at the AP2 layer: standard axes map 1:1, and extended axes flow into the
+`glide:policyEnvelope` extension field. A vanilla AP2 verifier validates the
+core mandate; a Glide verifier round-trips losslessly.
+
+The decoders go the other direction: when a third-party agent (Google Sidekick,
+an Adyen orchestrator) presents an inbound AP2 IntentMandate, `decodeIntentMandate`
+parses and validates it. Proof verification is not performed here — that is the
+caller's responsibility via `@glideco/kms-signer` or a generic JWS library.
+
+## Spec version
+
+Pinned to AP2 **`v0.1-alpha`** — exported as `AP2_SPEC_VERSION = '0.1-alpha'`.
+The AP2 JSON-LD `@context` URL is
+`https://agent-payments.googleapis.com/2025/v1/credentials.jsonld`. Using a
+wrong context URL means every mandate term (`allowedMerchantCategories`,
+`spendingLimit`, etc.) resolves to `undefined` in a JSON-LD verifier — the
+credential becomes effectively unparseable.
+
+## API surface
+
+| Export | Description |
+| --- | --- |
+| `encodeIntentMandate(args)` | Project a Glide grant + policy onto AP2 IntentMandate VDC. Proof left empty; caller signs. |
+| `encodeCartMandate(args)` | Build an AP2 CartMandate VDC from line items. Enforces uniform currency. |
+| `encodePaymentMandate(args)` | Build an AP2 PaymentMandate VDC for a settled cart. |
+| `decodeIntentMandate(input)` | Parse + Zod-validate an inbound AP2 IntentMandate. |
+| `decodeCartMandate(input)` | Parse + Zod-validate an inbound AP2 CartMandate. |
+| `decodePaymentMandate(input)` | Parse + Zod-validate an inbound AP2 PaymentMandate. |
+| `validateMandateChain(args)` | Cross-check intent → cart → payment id references + expiry. |
+| `AP2_SPEC_VERSION` | `'0.1-alpha'` — protocol version constant. |
+
+## Encoding a Glide grant as an IntentMandate
+
+```ts
+import { encodeIntentMandate } from '@glideco/ap2-adapter';
+
+const mandate = encodeIntentMandate({
+  grant: verifiedGrantClaims,          // JWT claims from the Glide grant
+  policy: agentPolicyEnvelope,         // current 14-axis envelope
+  userDid: 'did:web:glide.co:users:usr_abc',
+  agentDid: 'did:key:z6Mk…',
+  issuerDid: 'did:web:glide.co',       // optional — defaults to userDid
+});
+// mandate.proof is empty; sign with @glideco/kms-signer before transmitting
+```
+
+The encoder picks the tightest spending cap (per-charge beats per-day beats
+lifetime) for AP2's single `spendingLimit` slot and stashes the full envelope
+under `glide:policyEnvelope` for lossless round-trip on Glide verifiers.
+
+## Encoding a cart + payment mandate
+
+```ts
+import { encodeCartMandate, encodePaymentMandate } from '@glideco/ap2-adapter';
+
+const cart = encodeCartMandate({
+  cartId: simulationId,
+  intentMandateId: mandate.id,
+  agentDid: 'did:key:z6Mk…',
+  merchantDid: 'did:web:merchant.example.com',
+  lineItems: [
+    { description: 'API call batch', quantity: 500, amountCents: 1, currency: 'USD' },
+  ],
+  validUntil: new Date(Date.now() + 5 * 60_000).toISOString(),
+});
+
+const payment = encodePaymentMandate({
+  paymentId: crypto.randomUUID(),
+  cartMandateId: cart.id,
+  intentMandateId: mandate.id,
+  payerDid: 'did:web:glide.co:users:usr_abc',
+  payeeDid: 'did:web:merchant.example.com',
+  amountCents: 500,
+  currency: 'USD',
+  method: { type: 'crypto-x402', token: '0xRecipientAddress', network: 'base' },
+  expirationDate: cart.expirationDate,
+  rail: 'x402',
+});
+```
+
+## Validating an inbound mandate chain
+
+```ts
+import {
+  decodeIntentMandate,
+  decodeCartMandate,
+  validateMandateChain,
+} from '@glideco/ap2-adapter';
+
+const intent = decodeIntentMandate(rawIntentPayload);  // throws on schema violation
+const cart   = decodeCartMandate(rawCartPayload);
+
+const result = validateMandateChain({ intent, cart });
+if (!result.ok) {
+  throw new Error(`Mandate chain invalid: ${result.reason}`);
+}
+```
+
+## Common pitfalls
+
+**Currency case.** AP2 0.1 requires ISO 4217 uppercase. The schemas enforce this
+via regex (`/^[A-Z]{3}$/`). Lowercase `'usd'` throws at parse time.
+
+**Amount format.** All amount fields are decimal strings — no floats, no
+thousand separators, no exponential notation. The regex is
+`/^-?\d+(\.\d{1,4})?$/`. Passing a JavaScript `number` throws.
+
+**Proof block.** All three encoders return a VDC with `proof` omitted. Do not
+transmit the mandate without attaching a proof — receiving verifiers will reject
+unsigned credentials.
+
+## Reading list
+
+- [ConnectorManifest standard](/docs/oss/standards/connector-manifest) — how
+  protocol capabilities are declared.
+- [`@glideco/ucp-profile`](/docs/oss/packages/ucp-profile) — discovery layer
+  that references AP2 mandate acceptance.
+- [`@glideco/acp-merchant`](/docs/oss/packages/acp-merchant) — commerce
+  protocol (ACP) that sits alongside AP2.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/ap2-adapter)

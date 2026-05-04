@@ -119,4 +119,143 @@ Issue a scoped virtual card against the agent sub-vault. The card carries its ow
 
 ## Auth
 
-Caller's grant must include the `cards:manage` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `cards:manage` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "cards.issue",
+    "params": {
+      "card_label": "AWS Cloud Infra — May 2026",
+      "funding_cap_cents": 50000,
+      "expires_at": "2026-06-01T00:00:00Z",
+      "mcc_allowlist": ["7372", "7379"],
+      "single_use": false,
+      "idempotency_key": "aws-infra-card-may2026-001"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('cards.issue', {
+  card_label: 'AWS Cloud Infra — May 2026',
+  funding_cap_cents: 50000,
+  expires_at: '2026-06-01T00:00:00Z',
+  mcc_allowlist: ['7372', '7379'],
+  single_use: false,
+  idempotency_key: 'aws-infra-card-may2026-001',
+});
+
+console.log(result);
+// Store result.details_envelope securely — it is only returned once.
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("cards.issue", {
+    "card_label": "AWS Cloud Infra — May 2026",
+    "funding_cap_cents": 50000,
+    "expires_at": "2026-06-01T00:00:00Z",
+    "mcc_allowlist": ["7372", "7379"],
+    "single_use": False,
+    "idempotency_key": "aws-infra-card-may2026-001",
+})
+
+# details_envelope is only present on first issue; store it before discarding.
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Success — card issued with one-shot details envelope:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "card_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+    "last4": "4242",
+    "issued_at": "2026-05-04T08:00:00Z",
+    "policy_version": 2,
+    "details_envelope": {
+      "pan": "4111111111114242",
+      "cvv": "737",
+      "expiry_month": "06",
+      "expiry_year": "2026",
+      "billing_address": {
+        "line1": "340 Pine St Suite 800",
+        "city": "San Francisco",
+        "postal_code": "94104",
+        "country": "US"
+      }
+    }
+  }
+}
+```
+
+Idempotent re-call (same `idempotency_key`) — `details_envelope` absent:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "card_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+    "last4": "4242",
+    "issued_at": "2026-05-04T08:00:00Z",
+    "policy_version": 2,
+    "details_envelope": null
+  }
+}
+```
+
+Funding cap exceeds the tightest envelope cap:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "card funding_cap 50000 exceeds tightest envelope cap 25000 (per_tx=25000, per_day=unset, lifetime=unset)",
+    "data": { "reason_id": "funding_cap_over_envelope" }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `funding_cap_cents` exceeds the tightest envelope cap; MCC code not 4 digits; envelope has no amount caps defined | Lower `funding_cap_cents` or update the envelope caps first |
+| `-32001` | Unauthorized | Missing/expired grant token | Refresh via `agent.grant.refresh` |
+| `-32002` | Policy denied | Grant missing `cards:manage` scope | Issue a new grant with the required scope |
+| `-32603` | Internal error | Issuer-side card creation failed | Retry with the same `idempotency_key`; the response will be idempotent |
+
+## Step-up flow
+
+`cards.issue` does not itself trigger step-up — the `Requires human approval` annotation refers to the parent `agent.budget.create` saga that provisions the vault the card is drawn against. Cards issue freely once the vault is active and `funding_cap_cents` stays within the envelope.
+
+If the issuing vault was originally configured with a `step_up_amount_cents` threshold and you are issuing a card whose `funding_cap_cents` exceeds that threshold, you will need a step-up-approved grant before calling this tool. Obtain one via `agent.grant.issue` (which always requires step-up). See [Step-up protocol](/docs/agents/step-up) for the full flow.
+
+For `payments.initiate` — which does trigger inline step-up — see the [payments.initiate step-up flow](/docs/agents/api/payments-initiate#step-up-flow).

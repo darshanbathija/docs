@@ -1,0 +1,146 @@
+---
+title: "@glideco/kms-signer"
+description: "Pluggable KMS signer interface for AWS KMS, GCP KMS, and HashiCorp Vault Transit. Used to issue W3C VCs and build did:web documents."
+icon: "key"
+---
+
+Vendor-neutral signing abstraction for Glide's VC issuer and `did:web`
+document builder. All four backends — AWS KMS, GCP KMS, HashiCorp Vault
+Transit, and an env-key reference implementation — satisfy the same
+`KmsSigner` interface, so application code is decoupled from any single KMS
+vendor. The private key never leaves the HSM; callers send a payload and
+receive a signature.
+
+The env-key backend holds a software private key in process memory and is
+fail-closed: `buildKmsSigner` throws at boot time when `NODE_ENV=production`.
+
+## Install
+
+```bash
+npm install @glideco/kms-signer
+```
+
+[npmjs.com/package/@glideco/kms-signer](https://www.npmjs.com/package/@glideco/kms-signer)
+
+## Why a neutral interface?
+
+A single long-lived issuer key (e.g. for `did:web:glide.co`) cannot live in
+an env var — that fails any external compliance audit. The three production
+backends share one interface so the VC issuer code, the `did:web` document
+builder, and any future long-lived signing path are not entangled with a
+specific cloud KMS. Switching from AWS to GCP is a one-line change in the
+boot path.
+
+## KmsSigner interface
+
+```ts
+interface KmsSigner {
+  readonly backend: 'aws' | 'gcp' | 'vault' | 'env-key';
+  readonly algorithm: 'ed25519' | 'es256' | 'es384' | 'rsa256';
+  readonly keyId: string; // ARN / Vault path / alias / env-key-<alg>
+  sign(request: KmsSignRequest): Promise<KmsSignResult>;
+  getPublicKeyPem(): Promise<string>;
+}
+```
+
+`keyId` shapes accepted per backend:
+- AWS KMS: `arn:aws:kms:<region>:<acct>:key/<uuid>`, `alias/<name>`, or the short `alias/<name>` form.
+- GCP KMS: `projects/<id>/locations/<r>/keyRings/<ring>/cryptoKeys/<name>`.
+- Vault Transit: `transit/keys/<name>`.
+- env-key: `env-key-<algorithm>` (auto-derived if omitted).
+
+## Dev / test: env-key backend
+
+```ts
+import { buildEnvKeySigner } from '@glideco/kms-signer';
+
+const signer = buildEnvKeySigner({
+  privateKeyPem: process.env.ISSUER_KEY_PEM!,
+  algorithm: 'ed25519',
+  nodeEnv: process.env.NODE_ENV, // throws if 'production'
+});
+
+const result = await signer.sign({
+  payload: Buffer.from('hello').toString('base64url'),
+  algorithm: 'ed25519',
+  keyId: signer.keyId,
+});
+// result.signature → base64url-encoded 64-byte Ed25519 sig
+```
+
+## Production: bring your own backend
+
+```ts
+import { buildKmsSigner, type KmsSigner } from '@glideco/kms-signer';
+import { KMSClient, SignCommand } from '@aws-sdk/client-kms';
+
+const kmsClient = new KMSClient({ region: 'us-east-1' });
+const keyId = 'arn:aws:kms:us-east-1:123456789012:key/abc-def';
+
+const signer = buildKmsSigner({
+  backend: 'aws',
+  algorithm: 'ed25519',
+  keyId,
+  impl: {
+    async sign({ payload, algorithm, keyId }) {
+      const res = await kmsClient.send(new SignCommand({
+        KeyId: keyId,
+        Message: Buffer.from(payload, 'base64url'),
+        MessageType: 'RAW',
+        SigningAlgorithm: 'ECDSA_SHA_256', // map algorithm → AWS enum
+      }));
+      return {
+        signature: Buffer.from(res.Signature!).toString('base64url'),
+        algorithm,
+        keyId,
+        signedAt: new Date().toISOString(),
+      };
+    },
+    async getPublicKeyPem() {
+      // fetch public key from AWS KMS GetPublicKey and convert to SPKI PEM
+      return myFetchPublicKeyPem(kmsClient, keyId);
+    },
+  },
+});
+```
+
+## Build a did:web document
+
+```ts
+import { buildDidWebDocument } from '@glideco/kms-signer';
+
+const pubKeyPem = await signer.getPublicKeyPem();
+// Convert PEM to multibase or JWK as needed, then:
+const didDoc = buildDidWebDocument({
+  domain: 'glide.co',
+  keyId: 'key-1',
+  algorithm: 'ed25519',
+  publicKeyMultibase: 'zABCDEF...', // multibase(pubkey bytes)
+  serviceEndpoint: {
+    issuerEndpoint: 'https://glide.co/credentials/issue',
+    vcStatusListUrl: 'https://glide.co/credentials/status/1',
+  },
+});
+// Serve `JSON.stringify(didDoc, null, 2)` at
+// https://glide.co/.well-known/did.json
+```
+
+The output is the JSON that VC verifiers fetch to validate signatures over
+`AgentSanctionsPassCredential` and any other VC Glide issues.
+
+## ECDSA and IEEE P-1363
+
+For `es256` and `es384`, `node:crypto`'s default `sign.sign(key)` emits
+ASN.1 DER — every JOSE/JWS verifier and VC cryptosuite expects IEEE P-1363
+raw r‖s (64 bytes for P-256, 96 for P-384). The env-key backend passes
+`{ dsaEncoding: 'ieee-p1363' }` internally. Production backends that wrap
+AWS KMS should verify the `Signature` bytes are in the same format — AWS KMS
+returns DER by default and may require a DER→P-1363 conversion step.
+
+## Reading list
+
+- [`@glideco/kya-vc`](/docs/oss/packages/kya-vc) — consumes `KmsSigner` to issue `AgentSanctionsPassCredential`.
+- [`@glideco/agent-identity`](/docs/oss/packages/agent-identity) — produces the `did:key` used as VC subject.
+- [did:web method](https://w3c-ccg.github.io/did-method-web/)
+- [W3C VC Data Model 1.1](https://www.w3.org/TR/vc-data-model/)
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/kms-signer)

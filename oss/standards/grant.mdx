@@ -4,7 +4,7 @@ description: "OAuth bearer grant JWT claims. RFC 8707 resource-indicator-bound; 
 icon: 'key'
 ---
 
-The bearer grant agent runtimes carry on every MCP tool call. Issued by the OAuth Authorization Server (Ory Hydra in production; HMAC-SHA256 in development). Verified by `@glide/grant-wrapper` on every tool invocation per the F3 IRON RULE.
+The bearer grant agent runtimes carry on every MCP tool call. Issued by the OAuth Authorization Server (Ory Hydra in production; HMAC-SHA256 in development). Verified by `@glideco/grant-wrapper` on every tool invocation per the F3 IRON RULE.
 
 ## Canonical URL
 
@@ -28,7 +28,7 @@ The bearer grant agent runtimes carry on every MCP tool call. Issued by the OAut
 
 ## Validation contract
 
-`@glide/grant-wrapper` re-validates every grant on every tool invocation:
+`@glideco/grant-wrapper` re-validates every grant on every tool invocation:
 
 1. **JWT signature** — verified against the AS's JWKS.
 2. **`exp` not in past** — bearer expiry.

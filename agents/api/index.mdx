@@ -12,6 +12,73 @@ Glide Headless exposes its tools through three MCP endpoints:
 
 Each tool below shows its required scope, annotations, and exact input/output JSON Schemas. Schemas are auto-generated from the source-of-truth Zod definitions in `apps/mcp/src/tools/`.
 
+## Base URL
+
+Three category-specific JSON-RPC endpoints:
+
+- `https://mcp.glide.co/mcp/read` — non-mutating tools (`accounts.balance`, `accounts.list`, `agents.list`, `audit.stream`, `payments.simulate`, `skills.list`, `transactions.list`, `x402.receive`)
+- `https://mcp.glide.co/mcp/write` — mutating tools (`beneficiary.add`, `cards.freeze`, `cards.issue`, `payments.initiate`, `payroll.run`, `transfer.schedule`, `x402.pay`)
+- `https://mcp.glide.co/mcp/treasury` — high-privilege tools (`agent.budget.create`, `agent.budget.revoke`, `agent.grant.issue`, `agent.grant.refresh`, `killSwitch.all`, `vault.rotateSigner`, `yield.allocate`)
+
+Tools are namespaced; calling a write tool on `/mcp/read` returns a confused-deputy error.
+
+## Auth
+
+Every call must carry a Glide-issued grant JWT in the `Authorization` header:
+
+```
+Authorization: Bearer <grant_token>
+```
+
+Grants are scoped (e.g. `accounts:read`, `payments:initiate`), tied to a specific principal + agent + entity, and have a short TTL. The MCP server performs a fresh database read on every call so a revoked grant fails closed immediately. To obtain a grant, complete the [OAuth flow](/docs/oss/headless/oauth-flow) with your agent's `client_credentials`.
+
+## Quick example
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "accounts.list",
+    "params": {}
+  }'
+```
+
+For curl, TypeScript, and Python wrapper implementations that make every per-tool example on this site runnable as-is, see [Clients (curl, TypeScript, Python)](/agents/api/_clients).
+
+## All 22 tools
+
+| Tool | Scope | Category | Step-up | Description |
+| ---- | ----- | -------- | ------- | ----------- |
+| [`accounts.balance`](/agents/api/accounts-balance) | `accounts:read` | read | no | Per-chain, per-token balance of the agent vault. |
+| [`accounts.list`](/agents/api/accounts-list) | `accounts:read` | read | no | List the accounts this agent can operate on. |
+| [`agents.list`](/agents/api/agents-list) | `agents:read` | read | no | List sibling agents under the same principal/entity. |
+| [`audit.stream`](/agents/api/audit-stream) | `audit:stream` | read | no | Mint a cursor for subscribing to this agent's event stream over SSE. |
+| [`payments.simulate`](/agents/api/payments-simulate) | `payments:simulate` | read | no | Run policy evaluation against a proposed payment without side effects. |
+| [`skills.list`](/agents/api/skills-list) | `accounts:read` | read | no | Catalog of installable skills from glide.co/skills. |
+| [`transactions.list`](/agents/api/transactions-list) | `accounts:read` | read | no | Paginated list of this agent's transactions. |
+| [`x402.receive`](/agents/api/x402-receive) | `x402:receive` | read | no | Return this agent's x402 receive endpoints. |
+| [`beneficiary.add`](/agents/api/beneficiary-add) | `beneficiary:write` | write | no | Propose adding a counterparty to the agent's envelope allowlist. |
+| [`cards.freeze`](/agents/api/cards-freeze) | `cards:manage` | write | no | Freeze a previously issued card. |
+| [`cards.issue`](/agents/api/cards-issue) | `cards:manage` | write | no | Issue a scoped virtual card against the agent sub-vault. |
+| [`payments.initiate`](/agents/api/payments-initiate) | `payments:initiate` | write | conditional | Initiate a payment inside the agent vault envelope. |
+| [`payroll.run`](/agents/api/payroll-run) | `payments:initiate` | write | no | Kick a payroll batch (requires V2 payroll infra). |
+| [`transfer.schedule`](/agents/api/transfer-schedule) | `payments:initiate` | write | conditional | Schedule a future-dated transfer; envelope evaluated at schedule + execute time. |
+| [`x402.pay`](/agents/api/x402-pay) | `x402:pay` | write | no | Pay an x402 micropayment endpoint with server-side RPC verification. |
+| [`agent.budget.create`](/agents/api/agent-budget-create) | `agent:budget:create` | treasury | no | Spawn a child agent with a scoped sub-vault and policy envelope. |
+| [`agent.budget.revoke`](/agents/api/agent-budget-revoke) | `agent:budget:revoke` | treasury | no | Revoke a child agent and optionally sweep its vault to the parent. |
+| [`agent.grant.issue`](/agents/api/agent-grant-issue) | `agent:budget:create` | treasury | always | Issue a new bearer grant with a narrowed scope set. |
+| [`agent.grant.refresh`](/agents/api/agent-grant-refresh) | `agent:budget:create` | treasury | no | Re-issue a grant under the current policy version when policy is unchanged-or-narrowed. |
+| [`killSwitch.all`](/agents/api/killSwitch-all) | `agent:budget:revoke` | treasury | no | Atomic kill-switch: revoke every grant + freeze every sub-vault for this principal. |
+| [`vault.rotateSigner`](/agents/api/vault-rotateSigner) | `treasury:rotate-signer` | treasury | always | Rotate the signing key for this agent's sub-vault. |
+| [`yield.allocate`](/agents/api/yield-allocate) | `treasury:yield-allocate` | treasury | conditional | Move funds between yield vaults (Aave/Morpho/Kamino/idle). |
+
+**Step-up column:** `always` = every call requires principal biometric approval regardless of amount. `conditional` = required when the transfer amount exceeds the envelope's `step_up_amount_cents` threshold. `no` = never step-up gated.
+
+See [Policy envelope](/agents/policy-envelope) for the full policy contract, [Step-up flow](/agents/step-up) for the biometric approval sequence, and [Receipts](/agents/receipts) for the audit trail format.
+
 ## Read tools
 
 | Tool | Description |

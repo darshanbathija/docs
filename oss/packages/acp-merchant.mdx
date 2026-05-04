@@ -1,0 +1,145 @@
+---
+title: "@glideco/acp-merchant"
+description: "Merchant-side handler for the Agentic Commerce Protocol (ACP) v2026-04-17.1. Zod schemas + pure handler functions for /agentic_checkout and /delegate_payment."
+icon: "cart-shopping"
+---
+
+Merchant-side adapter for the Agentic Commerce Protocol (ACP), a REST
+commerce layer co-authored by OpenAI and Stripe with deployments live at Etsy,
+and rolling out across Shopify merchants including Glossier, Vuori, and Spanx.
+The protocol lets buyer agents (ChatGPT, Claude tools, custom orchestrators)
+submit a cart and settle payment against any ACP-conformant merchant endpoint.
+This package provides the Zod schemas and pure handler functions for the two
+ACP endpoints; the actual Next.js route handlers and settlement dependencies
+live in `apps/web`.
+
+This package is a wire-format adapter, not the source of truth for the ACP
+spec. When ACP publishes a new dated release that changes wire shape, the
+version literal is bumped, both route handlers are updated, and the merchant
+integration tests are re-run. The current pinned version is echoed on every
+response via the `X-Acp-Version` header so SDK consumers can detect what
+variant they are talking to.
+
+## Install
+
+```bash
+npm install @glideco/acp-merchant
+```
+
+[npmjs.com/package/@glideco/acp-merchant](https://www.npmjs.com/package/@glideco/acp-merchant)
+
+## Why strict parsing matters
+
+ACP's reference clients (Etsy's buyer-agent SDK, Shopify Sidekick) produce
+largely valid payloads, but third-party agents regularly emit lowercase
+currency strings, signed amounts on positive-only fields, and ids containing
+URL-reserved characters. Those errors surface silently downstream in Stripe SPT
+cache lookups and tax exporters that key on literal strings. The `v2026-04-17.1`
+strictness bump closes those gaps: ISO 4217 uppercase enforced via regex on all
+currency fields, non-negative amounts required on `unitPrice` / `subtotal` /
+`total` / `shipping` / `tax`, and URL-safe ids on carts and line items.
+
+## Spec version
+
+Pinned to ACP **`2026-04-17.1`** — exported as `ACP_SPEC_VERSION`. The `.1`
+Glide suffix marks a parser-only tightening: the upstream ACP wire spec at
+`v2026-04-17` is unchanged, but our parser now rejects what the spec says is
+invalid but previously accepted silently.
+
+## API surface
+
+| Export | Description |
+| --- | --- |
+| `handleAgenticCheckout(rawRequest, deps)` | Parse, validate, and idempotently create a checkout intent. |
+| `handleDelegatePayment(rawRequest, deps)` | Confirm + settle a previously created checkout intent. |
+| `recomputeCartSubtotal(cart)` | Server-side subtotal recompute from line items. Never trust buyer-supplied subtotals. |
+| `validateCartTotal(cart)` | Check that `total = subtotal + shipping + tax - discount`. Returns `AcpError` on mismatch. |
+| `ACP_SPEC_VERSION` | `'2026-04-17.1'` — echoed in `X-Acp-Version` response header. |
+| `ACP_VERSION_HEADER` | `'X-Acp-Version'` — header constant. |
+| `ACP_IDEMPOTENCY_HEADER` | `'Idempotency-Key'` — spec-mandated idempotency header. |
+
+## Wiring the /agentic_checkout route
+
+```ts
+// apps/web/src/app/api/acp/agentic_checkout/route.ts
+import { handleAgenticCheckout, ACP_VERSION_HEADER, ACP_SPEC_VERSION } from '@glideco/acp-merchant';
+
+export async function POST(req: Request) {
+  const body = await req.json();
+  // Per spec: prefer header, fall back to body field for legacy clients
+  const idempotencyKey = req.headers.get('Idempotency-Key') ?? body.idempotencyKey;
+
+  const response = await handleAgenticCheckout(
+    { ...body, idempotencyKey },
+    {
+      async loadByIdempotencyKey(key) {
+        return db.query.acpCheckouts.findFirst({ where: eq(schema.acpCheckouts.idempotencyKey, key) });
+      },
+      async storeForIdempotency(key, checkout) {
+        await db.insert(schema.acpCheckouts).values({ ...checkout, idempotencyKey: key });
+      },
+      async mintPaymentIntent(cart, buyer) {
+        // Creates a Stripe SPT or Glide x402/MPP payment intent
+        return smartRouter.createPaymentIntent({ cart, buyer });
+      },
+    }
+  );
+
+  return Response.json(response, {
+    headers: { [ACP_VERSION_HEADER]: ACP_SPEC_VERSION },
+  });
+}
+```
+
+## Cart validation
+
+Always recompute and validate cart totals server-side before minting a payment
+intent:
+
+```ts
+import { recomputeCartSubtotal, validateCartTotal } from '@glideco/acp-merchant';
+
+// Recompute subtotal from line items (ignores buyer-supplied subtotal)
+const computed = recomputeCartSubtotal(cart);
+
+// Check the total = subtotal + shipping + tax - discount
+const cartError = validateCartTotal(cart);
+if (cartError) {
+  return Response.json(cartError, { status: 400 });
+}
+```
+
+## Error codes
+
+| Code | When |
+| --- | --- |
+| `invalid_request` | Schema validation failed (bad amount format, lowercase currency, URL-unsafe id). |
+| `invalid_cart_total` | `total ≠ subtotal + shipping + tax - discount`. |
+| `idempotency_conflict` | Same key, different cart payload (replay with drift). |
+| `unsupported_currency` | Currency not accepted by this merchant. |
+| `spec_version_mismatch` | Caller's `X-Acp-Version` does not match `ACP_SPEC_VERSION`. |
+| `sanctions_block` | Buyer agent's DID / address matched a sanctions entry. |
+
+## Common pitfalls
+
+**Discount polarity.** `discount` keeps `acpMoneySchema` (allows negative amounts)
+because the spec represents discounts as negative values. All other money fields
+use `acpMoneyPositiveSchema` — a negative `unitPrice` produces a 400.
+
+**Idempotency key location.** The ACP spec mandates `Idempotency-Key` as an HTTP
+header (Stripe-inherited). Both route handlers accept a body field as fallback
+for legacy clients, but the header takes precedence when both are present.
+
+**Cart repricing.** The buyer agent constructs the cart; the merchant must reprice
+it server-side using `recomputeCartSubtotal` before charging. A buyer agent that
+inflates `subtotal` to reduce the charged amount is stopped here.
+
+## Reading list
+
+- [ConnectorManifest standard](/docs/oss/standards/connector-manifest) — how
+  ACP endpoint capabilities are declared.
+- [`@glideco/ap2-adapter`](/docs/oss/packages/ap2-adapter) — mandate layer
+  that sits above ACP commerce.
+- [`@glideco/ucp-profile`](/docs/oss/packages/ucp-profile) — discovery profile
+  that advertises ACP endpoint URLs.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/acp-merchant)

@@ -125,4 +125,125 @@ Propose adding a counterparty to the agent's envelope allowlist. Per the multisi
 
 ## Auth
 
-Caller's grant must include the `beneficiary:write` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `beneficiary:write` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "beneficiary.add",
+    "params": {
+      "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC"
+      },
+      "label": "Acme Supplier — Base USDC",
+      "justification": "Regular monthly SaaS invoice payments to Acme Corp per contract #2026-Q2-017",
+      "idempotency_key": "acme-supplier-base-usdc-allowlist-20260504"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('beneficiary.add', {
+  counterparty: {
+    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    chain: 'base',
+    token: 'USDC',
+  },
+  label: 'Acme Supplier — Base USDC',
+  justification: 'Regular monthly SaaS invoice payments to Acme Corp per contract #2026-Q2-017',
+  idempotency_key: 'acme-supplier-base-usdc-allowlist-20260504',
+});
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("beneficiary.add", {
+    "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC",
+    },
+    "label": "Acme Supplier — Base USDC",
+    "justification": "Regular monthly SaaS invoice payments to Acme Corp per contract #2026-Q2-017",
+    "idempotency_key": "acme-supplier-base-usdc-allowlist-20260504",
+})
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Success — proposal enqueued for principal approval:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "proposal_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+    "status": "pending_principal_approval",
+    "enqueued_at": "2026-05-04T09:15:00Z"
+  }
+}
+```
+
+Auto-approved (policy permits the counterparty without human sign-off):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "proposal_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+    "status": "auto_approved",
+    "enqueued_at": "2026-05-04T09:15:00Z"
+  }
+}
+```
+
+Missing scope:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "grant does not include scope beneficiary:write",
+    "data": { "reason_id": "insufficient_scope" }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `counterparty.chain` not in enum, address empty, or `idempotency_key` too short | Validate against the input schema before calling |
+| `-32001` | Unauthorized | Missing/expired grant token | Refresh via `agent.grant.refresh` |
+| `-32002` | Policy denied | Grant missing `beneficiary:write` scope | Issue a new grant with the required scope |
+| `-32004` | Rate limited | Too many proposals in a short window | Back off by `retry_after_seconds` in the error `data` |
+| `-32603` | Internal error | Proposal write failed | Retry with the same `idempotency_key`; the response will be idempotent |

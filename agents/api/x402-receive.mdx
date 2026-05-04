@@ -132,4 +132,125 @@ Return this agent's x402 receive endpoints. Every Glide vault is x402-addressabl
 
 ## Auth
 
-Caller's grant must include the `x402:receive` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `x402:receive` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+# All chains
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "x402.receive",
+    "params": {}
+  }'
+
+# Filter to a single chain
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "x402.receive",
+    "params": { "chain": "base" }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// All chains
+const all = await client.call('x402.receive', {});
+
+// Filter to Base only
+const baseOnly = await client.call('x402.receive', { chain: 'base' });
+
+for (const endpoint of baseOnly.endpoints) {
+  console.log(`${endpoint.chain} ${endpoint.token} → ${endpoint.receiving_address}`);
+  console.log(`  Accept range: ${endpoint.min_amount_cents}–${endpoint.max_amount_cents} cents`);
+}
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+# All chains
+result = client.call("x402.receive", {})
+
+# Filter to Solana only
+sol_result = client.call("x402.receive", {"chain": "sol"})
+for endpoint in sol_result["endpoints"]:
+    print(f"{endpoint['chain']} {endpoint['token']} → {endpoint['receiving_address']}")
+```
+
+</CodeGroup>
+
+## Response examples
+
+**Success — all chains**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "endpoints": [
+      {
+        "url": "https://mcp.glide.co/x402/receive/agt_7f3e4b2a",
+        "chain": "base",
+        "token": "USDC",
+        "receiving_address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "min_amount_cents": 1,
+        "max_amount_cents": 10000,
+        "accepts": ["application/json", "text/plain"]
+      },
+      {
+        "url": "https://mcp.glide.co/x402/receive/agt_7f3e4b2a",
+        "chain": "sol",
+        "token": "USDC",
+        "receiving_address": "DRpbCBMxVnDK7maPM5tGv6MvB3v1sRMC86PZ8okm38Rn",
+        "min_amount_cents": 1,
+        "max_amount_cents": 10000,
+        "accepts": ["application/json"]
+      }
+    ],
+    "fetched_at": "2026-05-04T15:00:00Z"
+  }
+}
+```
+
+**No endpoints configured**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "no x402 endpoints configured for this agent (agent must be active + have at least one chain in allowlist)",
+    "data": {
+      "reason_id": "no_x402_endpoints"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | `reason_id` | Meaning |
+| ---- | ----------- | ------- |
+| `-32000` | `unauthenticated` | Bearer token missing or expired. |
+| `-32001` | `unauthorized` | Grant does not include `x402:receive`. |
+| `-32602` | `no_x402_endpoints` | The agent is inactive or has no chain in its allowlist. Ensure the vault is active and at least one chain is enabled for the agent. |
+| `-32603` | `internal_error` | Transient server fault. |

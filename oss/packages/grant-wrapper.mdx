@@ -1,0 +1,146 @@
+---
+title: "@glideco/grant-wrapper"
+description: "Fresh-read tenant + grant verification for Glide agent tools. Implements the F3 IRON RULE: cached grant alone never authorizes a money-touching call."
+icon: "key"
+---
+
+`verifyGrant()` is the entry gate every Glide MCP tool handler calls before
+touching money or reading sensitive vault state. It implements the **F3 IRON RULE**
+from the Glide money-safety contracts: re-read the grant row and the
+(principal, entity, vault) tenant graph from the database on every invocation.
+A JWT grant that was valid at issue time is treated as untrusted until the
+DB confirms it still is.
+
+Bearer tokens are point-in-time snapshots. Between issue and use the principal's
+entity membership can be revoked, transferred, or suspended; the grant itself can
+be superseded by a policy refresh. Trusting ambient server state — or the cached
+grant alone — leaves a window where a revoked principal can still move funds.
+This package closes that window at the cost of one DB read per tool call.
+
+## Install
+
+```bash
+npm install @glideco/grant-wrapper
+```
+
+[npmjs.com/package/@glideco/grant-wrapper](https://www.npmjs.com/package/@glideco/grant-wrapper)
+
+## Why two fresh reads?
+
+The grant DB row answers "has this token been revoked or superseded since issue?"
+The tenant graph answers "does (principal, entity, vault) still hold?" Both are
+necessary. A grant row that isn't revoked still doesn't authorize a call if the
+principal was removed from the entity between issue and use. Checking only one
+leaves an IDOR path; checking both closes it.
+
+Clock-skew tolerance (`clockSkewSeconds`, default 0) absorbs the 10–30 second
+drift measured in the Privy spike between Vercel pods, Hydra/Ory, and agent
+devices. The production default is 60 seconds — wide enough to absorb drift
+without meaningfully extending the effective grant lifetime.
+
+## API
+
+```ts
+import { verifyGrant, GrantError, type VerifiedGrant } from '@glideco/grant-wrapper';
+
+// Operator wires these two lookups over their DB driver:
+const grantLookup: GrantLookup = async (grantId) => {
+  const [row] = await db
+    .select({
+      revoked_at: grants.revokedAt,
+      superseded_by: grants.supersededBy,
+      expires_at: grants.expiresAt,
+    })
+    .from(grants)
+    .where(eq(grants.id, grantId))
+    .limit(1);
+  return row ?? null;
+};
+
+const tenantLookup: TenantLookup = async (principalId, entityId, vaultId) => {
+  const [row] = await db
+    .select({
+      entity_belongs_to_principal: entityMembers.entityId,
+      vault_belongs_to_entity: vaults.entityId,
+    })
+    .from(entityMembers)
+    .innerJoin(vaults, eq(vaults.entityId, entityMembers.entityId))
+    .where(
+      and(
+        eq(entityMembers.userId, principalId),
+        eq(entityMembers.entityId, entityId),
+        eq(vaults.id, vaultId),
+      ),
+    )
+    .limit(1);
+  return row
+    ? {
+        entity_belongs_to_principal: Boolean(row.entity_belongs_to_principal),
+        vault_belongs_to_entity: Boolean(row.vault_belongs_to_entity),
+      }
+    : null;
+};
+```
+
+## Verifying a grant in a tool handler
+
+```ts
+import { verifyGrant, GrantError } from '@glideco/grant-wrapper';
+
+async function handleTransferSendUsdc(claims, args) {
+  let ctx: VerifiedGrant;
+  try {
+    ctx = await verifyGrant(claims, 'treasury:write', {
+      grantLookup,
+      tenantLookup,
+      clockSkewSeconds: 60,
+      requiredAudience: {
+        vault_id: args.vaultId,
+        entity_id: args.entityId,
+      },
+    });
+  } catch (err) {
+    if (err instanceof GrantError) {
+      // err.code is one of the typed GrantErrorCode values.
+      return { ok: false, error: err.code };
+    }
+    throw err;
+  }
+
+  // ctx.principal_id, ctx.entity_id, ctx.vault_id are freshly verified.
+  // ctx.policy_version is used to detect stale-policy calls.
+  return await doTransfer(ctx, args);
+}
+```
+
+## Error codes
+
+`GrantError` carries a typed `code` so callers can route errors precisely:
+
+| Code                  | Meaning                                                       |
+| --------------------- | ------------------------------------------------------------- |
+| `grant_not_found`     | `jti` not in DB; token may be fabricated or pruned            |
+| `grant_revoked`       | Row has `revoked_at` set (kill-switch or manual revoke)       |
+| `grant_superseded`    | Grant was replaced by a policy refresh; agent must re-issue   |
+| `grant_expired`       | `exp + clockSkewSeconds ≤ now`                                |
+| `grant_not_yet_valid` | `nbf - clockSkewSeconds > now`                                |
+| `scope_missing`       | Required scope not in grant's `scope` array                   |
+| `audience_mismatch`   | Grant `aud.vault_id` or `aud.entity_id` doesn't match caller  |
+| `tenant_mismatch`     | (principal, entity) or (entity, vault) relationship broken    |
+
+## Narrowing detection
+
+For policy refreshes, the companion `isNarrowingOrUnchanged` export from
+`@glideco/policy-engine` determines whether a refresh broadens or only
+tightens the policy. `verifyGrant` handles liveness and IDOR checks;
+narrowing detection is a separate concern in the policy engine.
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) —
+  F3 (fresh-read tenant verify) is the rule this package enforces.
+- [`@glideco/policy-engine`](/docs/oss/packages/policy-engine) — evaluated
+  after `verifyGrant` passes; `ctx.policy_version` connects the two.
+- [Grant schema](https://glide.co/schemas/agent-banking/v1/grant.json) —
+  the JWT claims shape (`GrantClaims`) this package verifies against.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/grant-wrapper)

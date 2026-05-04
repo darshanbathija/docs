@@ -1,0 +1,169 @@
+---
+title: "@glideco/agent-events"
+description: "Closed-vocab Zod schemas for every event type in the Glide agent activity log. The taxonomy behind the AgentActivityEvent JSON Schema."
+icon: "scroll"
+---
+
+OSS reference implementation of the agent activity-log taxonomy from the Glide
+OSS plan §M4. Every event type that the MCP layer appends to `activity_log`
+lives here as a Zod schema in a discriminated union. The closed vocabulary is
+intentional: audit log consumers — compliance exporters, explainer narrators,
+anomaly detectors — switch on `eventType`; adding a new event type requires a
+deliberate schema update and a corresponding render path.
+
+The package ships the v1 surface of the
+[AgentActivityEvent JSON Schema](https://glide.co/schemas/agent-banking/v1/agent-activity-event.json)
+published at `glide.co/schemas/agent-banking/v1/`.
+
+## Install
+
+```bash
+npm install @glideco/agent-events
+```
+
+[npmjs.com/package/@glideco/agent-events](https://www.npmjs.com/package/@glideco/agent-events)
+
+## Why a closed vocab?
+
+An open event taxonomy is a footgun for every downstream consumer. If any string
+is a valid `eventType`, the compliance exporter can't tell the difference between
+a known event and a fabricated one, and the anomaly detector's switch statement
+silently falls through to a no-op default.
+
+The discriminated union here enforces that every `eventType` literal has a known
+schema. Unrecognized event types fail `AgentEventSchema.parse()` at the boundary
+where the event enters the system — typically inside the MCP tool handler — not
+later when a reviewer tries to render it.
+
+Adding a new event type is a two-line change (literal + schema + union entry)
+that produces a TypeScript compile error everywhere the switch is exhaustive.
+That friction is the point.
+
+## Event types (v1)
+
+| Event type               | Payload schema              | When it fires                                              |
+| ------------------------ | --------------------------- | ---------------------------------------------------------- |
+| `tool_call`              | `ToolCallEventSchema`       | Tool handler completes (pass or flag)                      |
+| `tool_call_blocked`      | `ToolCallEventSchema`       | Policy engine returns `deny` before execution              |
+| `tool_call_failed`       | `ToolCallEventSchema`       | Tool handler throws (infra error, not policy)              |
+| `reasoning_step`         | `ReasoningStepEventSchema`  | Agent emits a reasoning excerpt (≤200 chars, secrets-safe) |
+| `risk_verdict`           | `RiskVerdictEventSchema`    | Risk layer returns `pass` / `flag` / `block`               |
+| `anomaly_detected`       | `AnomalyDetectedEventSchema`| `@glideco/anomaly` heuristic fires                         |
+| `step_up_requested`      | `StepUpRequestedEventSchema`| Tool needs principal step-up before proceeding             |
+| `step_up_completed`      | `StepUpCompletedEventSchema`| Principal completes biometric / passkey / hardware-key     |
+| `step_up_declined`       | `StepUpRequestedEventSchema`| Principal declines or times out (same shape as requested)  |
+| `policy_change`          | `PolicyChangeEventSchema`   | Operator updates the vault's policy envelope               |
+| `policy_stale`           | `PolicyChangeEventSchema`   | Agent detects its cached policy is behind current version  |
+| `agent_install`          | inline                      | Skill installed on an entity                               |
+| `agent_uninstall`        | inline                      | Skill removed                                              |
+| `kill_switch`            | `KillSwitchEventSchema`     | Forensic kill-switch activated (`all-agents` or scoped)    |
+| `dsar_redaction_applied` | `DsarRedactionEventSchema`  | `@glideco/dsar` partial redaction applied                  |
+| `dsar_tombstone_applied` | `DsarRedactionEventSchema`  | `@glideco/dsar` full-erasure tombstone applied             |
+
+## Key payload shapes
+
+The `ToolCallEvent` is the most data-rich shape. It carries the SHA-256 digests
+of input and output (never the raw values), the risk verdict, policy version,
+grant ID, and optional on-chain tx hash + amount:
+
+```ts
+import {
+  AgentEventSchema,
+  ToolCallEventSchema,
+  isAgentEventOfType,
+  parseAgentEvent,
+  type AgentEvent,
+  type ToolCallEvent,
+} from '@glideco/agent-events';
+
+// Validate an inbound event from the MCP layer:
+const event = parseAgentEvent(rawJson);
+// Throws z.ZodError if eventType is unrecognized or payload is malformed.
+
+// Narrow to a specific shape with a type guard:
+if (isAgentEventOfType(event, 'tool_call')) {
+  // event.data is typed as ToolCallEvent
+  console.log(event.data.toolName);         // e.g. 'transfer.sendUsdc'
+  console.log(event.data.riskVerdict);      // 'pass' | 'flag' | 'block'
+  console.log(event.data.policyVersion);    // integer; 0 on first issue
+  console.log(event.data.onChainTxHash);    // undefined for non-broadcast tools
+}
+```
+
+Step-up events carry a sigil — a short opaque string that links the `requested`,
+`completed`, and `declined` triple into a single audit thread:
+
+```ts
+import { parseAgentEvent } from '@glideco/agent-events';
+
+const requested = parseAgentEvent({
+  eventType: 'step_up_requested',
+  data: {
+    sigil: 'su_2Zg4mKpT',
+    reason: 'Transfer amount $5,200 exceeds step-up threshold $5,000',
+    amountCents: 520_000,
+    counterparty: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+  },
+});
+
+const completed = parseAgentEvent({
+  eventType: 'step_up_completed',
+  data: {
+    sigil: 'su_2Zg4mKpT',
+    approvedAtMs: Date.now(),
+    factor: 'biometric',
+  },
+});
+```
+
+Policy change events record the direction of the change alongside version numbers:
+
+```ts
+const change = parseAgentEvent({
+  eventType: 'policy_change',
+  data: {
+    fromVersion: 3,
+    toVersion: 4,
+    changedBy: 'user_operator_xyz',
+    direction: 'tighten', // 'tighten' | 'loosen' | 'lateral'
+  },
+});
+```
+
+## Safe parsing
+
+`parseAgentEvent` throws on invalid input. For a non-throwing path use
+`AgentEventSchema.safeParse`:
+
+```ts
+import { AgentEventSchema } from '@glideco/agent-events';
+
+const result = AgentEventSchema.safeParse(untrustedPayload);
+if (!result.success) {
+  console.error('invalid event', result.error.flatten());
+} else {
+  // result.data is a narrowed AgentEvent
+}
+```
+
+## Adding a new event type
+
+1. Add the literal to `AGENT_EVENT_TYPES`.
+2. Write a Zod schema for the payload.
+3. Add a union member to `AgentEventSchema`.
+4. Update the `activity_log` writer and any switch-exhaustive consumers.
+
+New event types must go into unused positions — the literal strings are
+stable v1 once published in the JSON Schema at `glide.co/schemas/agent-banking/v1/`.
+
+## Reading list
+
+- [AgentActivityEvent JSON Schema](https://glide.co/schemas/agent-banking/v1/agent-activity-event.json) —
+  the canonical v1 schema derived from this package.
+- [`@glideco/anomaly`](/docs/oss/packages/anomaly) — emits `anomaly_detected`
+  events consumed by this taxonomy.
+- [`@glideco/dsar`](/docs/oss/packages/dsar) — emits `dsar_redaction_applied`
+  and `dsar_tombstone_applied` events; same payload shape.
+- [`@glideco/compliance-export`](/docs/oss/packages/compliance-export) —
+  reads `activity_log` rows typed against these schemas for export.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/agent-events)

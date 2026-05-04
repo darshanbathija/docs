@@ -1,6 +1,6 @@
 ---
 title: "payments.initiate"
-description: "Initiate a payment inside the agent vault envelope. Amounts over the step-up threshold return a pending_step_up response with a URL the user must visit. All on-"
+description: "Initiate a payment inside the agent vault envelope; amounts over the step-up threshold return a pending_step_up response until the principal approves."
 icon: "pen"
 ---
 
@@ -157,4 +157,201 @@ Initiate a payment inside the agent vault envelope. Amounts over the step-up thr
 
 ## Auth
 
-Caller's grant must include the `payments:initiate` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `payments:initiate` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "payments.initiate",
+    "params": {
+      "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC"
+      },
+      "amount_cents": 75000,
+      "currency": "USD",
+      "memo": "Invoice #INV-2026-0042 — software license renewal",
+      "idempotency_key": "inv-2026-0042-payment-attempt-001"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('payments.initiate', {
+  counterparty: {
+    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    chain: 'base',
+    token: 'USDC',
+  },
+  amount_cents: 75000,
+  currency: 'USD',
+  memo: 'Invoice #INV-2026-0042 — software license renewal',
+  idempotency_key: 'inv-2026-0042-payment-attempt-001',
+});
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("payments.initiate", {
+    "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC",
+    },
+    "amount_cents": 75000,
+    "currency": "USD",
+    "memo": "Invoice #INV-2026-0042 — software license renewal",
+    "idempotency_key": "inv-2026-0042-payment-attempt-001",
+})
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Success — payment accepted and queued for broadcast:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "kind": "accepted",
+    "pending_payment_id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+    "policy_version": 3,
+    "risk_verdict": "allow",
+    "enqueued_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+Step-up required (amount exceeds `step_up_amount_cents` in the envelope):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32003,
+    "message": "amount 750000 requires step-up approval",
+    "data": {
+      "reason_id": "step_up_required",
+      "step_up_url": "https://app.glide.co/step-up/e5f6a7b8-c9d0-1234-efab-345678901234?sigil=tok_abc123"
+    }
+  }
+}
+```
+
+Policy denied — daily cap exceeded:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32002,
+    "message": "daily spend cap of 100000 cents would be exceeded by this payment",
+    "data": { "reason_id": "daily_cap_exceeded" }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | Missing required field, chain not in enum, or `idempotency_key` too short | Validate against the input schema before calling |
+| `-32001` | Unauthorized | Missing/expired grant token | Refresh via `agent.grant.refresh` |
+| `-32002` | Policy denied | Amount exceeds per-tx / daily / lifetime cap; counterparty not on allowlist; chain blocked; MCC blocked; geo blocked; sanctions screen hit | Run `payments.simulate` first to identify the blocking axis |
+| `-32003` | Step-up required | Amount exceeds `step_up_amount_cents` in the policy envelope | Follow the step-up flow below, then retry with `step_up_sigil` |
+| `-32004` | Rate limited | Too many initiate calls in a short window | Back off by `retry_after_seconds` in the error `data` |
+| `-32005` | Vault contention | Another payment is being broadcast from the same vault | Retry after the in-flight broadcast completes |
+| `-32603` | Internal error | Server-side error during enqueueing | Retry with the same `idempotency_key`; the call is idempotent |
+
+## Step-up flow
+
+When the amount exceeds the `step_up_amount_cents` threshold in the policy envelope, the server returns a `-32003` error with `data.step_up_url` and `data.reason_id: "step_up_required"`. The payment row is already written in `pending` state — you do not need to resend the full payload.
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// ── Call 1: initiate ──────────────────────────────────────────────────────
+let pendingPaymentId: string;
+let stepUpUrl: string | undefined;
+
+try {
+  const result = await client.call('payments.initiate', {
+    counterparty: {
+      address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+      chain: 'base',
+      token: 'USDC',
+    },
+    amount_cents: 750000, // $7,500 — above the step-up threshold
+    currency: 'USD',
+    memo: 'Q2 vendor settlement',
+    idempotency_key: 'q2-vendor-settlement-001',
+  });
+  // amount was under step-up threshold — already accepted
+  pendingPaymentId = result.pending_payment_id;
+} catch (err: any) {
+  if (err.code === -32003) {
+    // Step-up required — save the pending_payment_id from error context
+    // and redirect the user to err.data.step_up_url.
+    stepUpUrl = err.data.step_up_url;
+    // The pending_payment_id is encoded in the step_up_url path.
+    // Your UI should open stepUpUrl in a browser or WebView; after the
+    // user completes biometric, the Glide app posts the sigil back to
+    // your redirect URI.
+    console.log('Redirect user to:', stepUpUrl);
+    // ... wait for the sigil to arrive at your redirect handler ...
+  } else {
+    throw err;
+  }
+}
+
+// ── Call 2: retry with sigil (after user completes biometric) ────────────
+const stepUpSigil = 'tok_abc123def456'; // received at your redirect URI
+
+const confirmed = await client.call('payments.initiate', {
+  counterparty: {
+    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    chain: 'base',
+    token: 'USDC',
+  },
+  amount_cents: 750000,
+  currency: 'USD',
+  memo: 'Q2 vendor settlement',
+  idempotency_key: 'q2-vendor-settlement-001', // same key — idempotent
+  // step_up_sigil is not part of the standard input schema;
+  // the MCP server reads it from the Authorization header extension.
+  // Pass it via the client wrapper's sigil option:
+});
+// result.kind === 'accepted'
+console.log('Payment accepted:', confirmed.pending_payment_id);
+```
+
+See [Step-up protocol](/docs/agents/step-up) for the full protocol-level reference including sigil expiry, retry semantics, and the redirect URI registration flow.

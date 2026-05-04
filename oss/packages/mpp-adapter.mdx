@@ -1,0 +1,161 @@
+---
+title: "@glideco/mpp-adapter"
+description: "Wire-format encoder/decoder for the Machine Payments Protocol (MPP). RFC 7235 Payment auth scheme, JCS-canonicalized payloads, multi-rail 402 challenges."
+icon: "coins"
+---
+
+Wire-format encoder and decoder for the Machine Payments Protocol (MPP), the
+IETF draft `draft-ryan-httpauth-payment` co-authored by Brendan Ryan (Tempo)
+and Jeff Weinstein (Stripe). The adapter handles the three-header round-trip:
+`WWW-Authenticate: Payment` (challenge), `Authorization: Payment` (credential),
+and `Payment-Receipt` (receipt). Pure functions, no IO — HTTP transport and
+on-chain settlement live in the MCP gateway.
+
+This package is a wire-format adapter, not the source of truth for the MPP
+spec. When the IETF draft advances to a new revision or breaks compatibility at
+the quoted-string escaping or JCS layers, a new minor is shipped and the
+`MPP_VERSION` constant is bumped in the same PR.
+
+## Install
+
+```bash
+npm install @glideco/mpp-adapter
+```
+
+[npmjs.com/package/@glideco/mpp-adapter](https://www.npmjs.com/package/@glideco/mpp-adapter)
+
+## Why MPP alongside x402?
+
+MPP and x402 are not wire-compatible. x402 uses custom headers
+(`X-PAYMENT-REQUIRED`, `X-PAYMENT`, `X-PAYMENT-RESPONSE`); MPP uses standard
+RFC 7235 (`WWW-Authenticate: Payment`, `Authorization: Payment`,
+`Payment-Receipt`). The two can coexist on the same endpoint via separate header
+sets — Glide's MCP gateway dispatches both. Use MPP when your buyer agents
+prefer standards-track HTTP auth scheme machinery; use x402 when you want the
+broader existing agent ecosystem that already speaks it.
+
+The `method=` parameter selects the settlement rail. The server can issue one
+`WWW-Authenticate: Payment` header per supported method in the same 402; the
+buyer agent picks one. Glide supports `tempo` and `solana` today; `lightning`
+and `stripe` land in a later release.
+
+## Spec version
+
+Pinned to MPP **`draft-mpp-v1-2026-04`** (IETF draft `draft-ryan-httpauth-payment`).
+Exported as `MPP_VERSION = '1.0'`. When the IETF draft becomes an RFC or breaks
+compat at a draft revision, bump the version literal and re-verify
+`serializeWwwAuthenticatePayment` quoted-string escape behavior — RFC 7230 §3.2.6
+changes around `obs-text` affect the backslash + CR/LF handling.
+
+## API surface
+
+| Export | Description |
+| --- | --- |
+| `buildMppChallenge(args)` | Build a charge-intent challenge object (Zod-validated). |
+| `serializeWwwAuthenticatePayment(challenge)` | Serialize to `WWW-Authenticate: Payment …` header value. CR/LF in any field throws (HTTP response-splitting defense). |
+| `parseAuthorizationPayment(header)` | Parse the client's `Authorization: Payment <b64u>` header. Returns `null` on parse failure. |
+| `composeMultiRailChallenge(challenges)` | Build one header string per method for multi-rail 402. |
+| `buildMppCharge(args)` | Convenience wrapper that builds + serializes in one call. |
+| `serializePaymentReceipt(receipt)` | Serialize a `Payment-Receipt` header value (base64url-JCS). |
+| `parsePaymentReceipt(headerValue)` | Parse a `Payment-Receipt` header value. |
+| `MPP_AUTH_SCHEME` | `'Payment'` — the RFC 7235 scheme name. |
+| `MPP_VERSION` | `'1.0'` — wire spec version. |
+
+## Challenge + credential round-trip
+
+```ts
+import {
+  buildMppChallenge,
+  serializeWwwAuthenticatePayment,
+  parseAuthorizationPayment,
+} from '@glideco/mpp-adapter';
+
+// Server: issue a charge challenge
+const challenge = buildMppChallenge({
+  id: crypto.randomUUID(),
+  realm: 'api.glide.co',
+  method: 'tempo',
+  request: {
+    amount: '5.00',
+    currency: 'USDC',
+    recipient: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    externalId: 'order_abc123',
+  },
+  expiresInSeconds: 300,
+});
+
+const wwwAuthHeader = serializeWwwAuthenticatePayment(challenge);
+// → 'Payment id="…", realm="api.glide.co", method="tempo", intent="charge", …'
+
+// On retry: parse the client credential
+const credential = parseAuthorizationPayment(
+  request.headers.get('Authorization') ?? ''
+);
+if (!credential) return new Response(null, { status: 400 });
+// → { challengeId, method: 'tempo', payload: { signature, authorization } }
+```
+
+## Multi-rail 402
+
+Serve multiple payment methods in a single 402 — the buyer agent picks one:
+
+```ts
+import { buildMppChallenge, composeMultiRailChallenge } from '@glideco/mpp-adapter';
+
+const baseRequest = {
+  amount: '1.00',
+  currency: 'USDC',
+  recipient: '0xGlideVault…',
+};
+
+const headers = composeMultiRailChallenge([
+  buildMppChallenge({ id: crypto.randomUUID(), realm: 'api.glide.co', method: 'tempo', request: baseRequest }),
+  buildMppChallenge({ id: crypto.randomUUID(), realm: 'api.glide.co', method: 'solana', request: baseRequest }),
+]);
+
+// Emit each as a separate WWW-Authenticate header
+headers.forEach((h) => response.headers.append('WWW-Authenticate', h));
+```
+
+## Receipt serialization
+
+After F1 server-side RPC verification confirms settlement, emit the receipt:
+
+```ts
+import { serializePaymentReceipt } from '@glideco/mpp-adapter';
+
+const receiptHeader = serializePaymentReceipt({
+  challengeId: credential.challengeId,
+  method: 'tempo',
+  reference: '0xabc123…', // on-chain tx hash
+  amountPaid: '5.00',
+  currency: 'USDC',
+  settledAt: new Date().toISOString(),
+});
+
+return new Response(JSON.stringify({ ok: true }), {
+  headers: { 'Payment-Receipt': receiptHeader },
+});
+```
+
+## Security notes
+
+`serializeWwwAuthenticatePayment` throws if any field contains CR (`\r`) or LF
+(`\n`) — those bytes enable HTTP response-splitting and indicate untrusted data
+reaching the challenge builder without sanitization. The function escapes
+backslash before double-quote (in that order) to comply with RFC 7235
+quoted-string escaping.
+
+The F1 money-safety rule (server-side RPC verify before recording settlement)
+lives in the MCP gateway, not here. This package is intentionally scope-limited
+to encoding and decoding headers.
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — the
+  F-rules every money-touching path observes.
+- [ConnectorManifest standard](/docs/oss/standards/connector-manifest) — how
+  Glide registers payment-protocol capabilities.
+- [`@glideco/ap2-adapter`](/docs/oss/packages/ap2-adapter) — Google AP2 mandate
+  layer that sits above MPP settlement.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/mpp-adapter)

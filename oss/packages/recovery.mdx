@@ -1,0 +1,234 @@
+---
+title: "@glideco/recovery"
+description: "Pure encoders for Safe + Zodiac Delay (EVM) and Squads v4 (Solana) social-recovery proposals. I/O-free; operators wire their own KMS signer and RPC client."
+icon: "rotate-left"
+---
+
+Pure encoders for Glide's social-recovery primitives on two chains. The EVM side
+targets Safe + Zodiac Delay Module v1.0.1: deploy and enable the module, queue a
+recovery action into the 72-hour cooldown, execute after cooldown, cancel via
+`setTxNonce`, and read on-chain queue state. The Solana side targets Squads v4:
+compose the propose-triple (config-tx-create + proposal-create + proposal-approve)
+for owner and threshold changes, plus proposal-cancel and config-transaction-execute
+for the veto and execute paths.
+
+Every export is a pure function that produces calldata bytes (EVM) or
+`EncodedInstruction` (a serialisable wire shape exporting `accountMetas[]`,
+`data`, `programId` — convertible to `web3.js TransactionInstruction` via the
+helper) objects (Solana). The package is I/O-free: operators wire their own
+KMS-held signer, chain RPC client, and DB. No signer loading, no network calls,
+no state machine persistence — those live in the operator's application layer.
+
+## Install
+
+```bash
+npm install @glideco/recovery
+```
+
+[npmjs.com/package/@glideco/recovery](https://www.npmjs.com/package/@glideco/recovery)
+
+## Why pure encoders?
+
+A recovery package that bundles a KMS client, an RPC provider, and a state
+machine is hard to audit, hard to test offline, and harder to replace when
+dependencies change. Pure encoders separate the cryptographic and structural
+work (what bytes to sign) from the operational work (who holds the key, which
+RPC to call, how to persist state). The operator owns the sensitive parts;
+this package owns the encoding.
+
+The allowlist of accepted instruction discriminators (Solana) belongs in the
+encoder package rather than the broadcaster because the broadcaster is the only
+thing that can enforce it, and it needs the canonical set from the same source
+that builds the instructions.
+
+## EVM — enable recovery on a Safe
+
+The first step generates the deterministic Delay Module address and a
+two-call bundle (deploy + enable). One user-signed Safe transaction activates
+recovery:
+
+```ts
+import {
+  composeEnableRecoveryModuleCalls,
+  RECOVERY_COOLDOWN_SECONDS,
+  RECOVERY_EXPIRATION_SECONDS,
+} from '@glideco/recovery';
+
+const safeAddress = '0xA1B2c3D4e5F6a7B8c9D0e1F2a3B4c5D6e7F8a9B0';
+const recoveryKeyAddress = '0xC3D4e5F6a7B8c9D0e1F2a3B4c5D6e7F8a9B0C1D2'; // Glide KMS (Seat R)
+
+const setup = composeEnableRecoveryModuleCalls({
+  // The Safe address — enableModule must be called by the Safe itself
+  safe: safeAddress,
+  // DelayInitializerInput: configures the Delay module's owner, avatar, target, cooldown
+  initializer: {
+    owner: recoveryKeyAddress,   // address allowed to queue recovery txs
+    avatar: safeAddress,          // the Safe whose balance is acted on
+    target: safeAddress,          // where execTransactionFromModule routes (== avatar)
+    cooldown: RECOVERY_COOLDOWN_SECONDS,     // 72h default
+    expiration: RECOVERY_EXPIRATION_SECONDS, // 7d window to execute after cooldown
+  },
+  // Optional: masterCopy defaults to Zodiac Delay v1.0.1
+  // Optional: saltNonce defaults to 0n (first deployment on this Safe+chain pair)
+});
+
+// setup.moduleAddress — deterministic CREATE2 address for the Delay module
+// setup.deploy       — { to, value, data } call to deploy via ModuleProxyFactory
+// setup.enable       — { to, value, data } call to enableModule on the Safe
+
+// Combine into a Safe multi-send and collect the user's signature:
+const safeTx = buildMultiSend([setup.deploy, setup.enable]);
+```
+
+## EVM — queue and execute a recovery action
+
+`composeRecoveryAction` is the high-level entry point. It takes the Safe + Delay
+module addresses and a discriminated action spec, and returns the `innerTx` to
+persist plus the pre-composed `queueCall` and `executeCall` the router broadcasts:
+
+```ts
+import { composeRecoveryAction } from '@glideco/recovery';
+
+// Recovery key proposes rotating to a new owner (e.g., after key loss):
+const composed = composeRecoveryAction({
+  safe: '0xA1B2c3D4e5F6a7B8c9D0e1F2a3B4c5D6e7F8a9B0',
+  delayModuleAddress: setup.moduleAddress,
+  action: {
+    kind: 'swap_owner',
+    prevOwner: '0x0000000000000000000000000000000000000001', // sentinel — caller reads Safe.getOwners()
+    oldOwner:  '0xB2C3d4E5f6A7b8C9D0e1F2a3B4C5d6E7F8a9B0C1',  // lost key
+    newOwner:  '0xC3D4e5F6a7B8c9D0e1F2a3B4c5D6e7F8a9B0C1D2',  // replacement key
+  },
+});
+
+// Persist composed.innerTx to DB (status='pending')
+// composed.queueCall  — { to: delayModule, value: '0', data: '0x...' } — recovery key signs + broadcasts
+// composed.executeCall — { to: delayModule, value: '0', data: '0x...' } — anyone broadcasts after cooldown
+// composed.safe, composed.delayModuleAddress — echo of inputs (lowercased)
+// composed.kind    — 'swap_owner'
+// composed.summary — human-readable one-liner for audit logs
+
+// After 72h cooldown, broadcast the pre-composed execute call:
+// (re-read innerTx from DB to ensure byte-stable replay)
+const executeCall = composed.executeCall;
+```
+
+## EVM — read on-chain Delay Module queue state
+
+```ts
+import { readDelayModuleQueueState } from '@glideco/recovery';
+import { JsonRpcProvider } from 'ethers';
+
+const provider = new JsonRpcProvider('https://mainnet.base.org');
+
+const state = await readDelayModuleQueueState({
+  delayModuleAddress: setup.moduleAddress,
+  provider,
+});
+// state = {
+//   cooldownSeconds: 259200,   // 72h
+//   expirationSeconds: 604800, // 7d window to execute after cooldown
+//   queueNonce: 1n,            // next item to queue
+//   txNonce: 0n,               // next item to execute (execute < queue = items pending)
+// }
+```
+
+## Solana — Squads v4 recovery
+
+The Squads encoder expands `swap_owner` into the two-instruction sequence
+(RemoveMember + AddMember) because Squads v4 has no atomic SwapMember
+instruction. The propose-triple is always three instructions:
+config-tx-create, proposal-create, proposal-approve:
+
+```ts
+import {
+  composeSolanaRecoveryAction,
+  composeSolanaCancelRecoveryInstruction,
+  recomposeSolanaExecuteRecoveryInstruction,
+} from '@glideco/recovery';
+
+// Seat R (recovery key) proposes swapping a lost member:
+const composed = composeSolanaRecoveryAction({
+  multisigPda: 'GrAkKfEpTKQuVHG2Y97Y2FF4i7y7Q5AHLK94KB5hwkhU',
+  transactionIndex: BigInt(7),
+  currentThreshold: 2,
+  creator: '4Nd1mBQtrMJVYVfKf2PX98HegncxXSystemRecoveryKey',  // Seat R base58 pubkey
+  recoveryActionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',   // DB row UUID — embedded in on-chain memo
+  action: {
+    kind: 'swap_owner',
+    oldMember: '4Nd1mBQtrMJVYVfKf2PX98HegncxXLostKeyPubkey1',  // base58 — lost key
+    newMember: 'DHmk7x1qGQUos2nsfQ3sJMnFHRWXYReplacementKey1', // base58 — replacement key
+  },
+});
+
+// composed.proposeInstructions  — [configTxCreate, proposalCreate, proposalApprove] (EncodedInstruction[])
+// composed.executeInstruction   — pre-composed configTransactionExecute (EncodedInstruction)
+// composed.innerTx              — SolanaInnerTx payload to persist in DB for replay
+// composed.multisigPda          — echo of input
+// composed.transactionIndex     — decimal string of the u64 index
+// composed.kind                 — 'swap_owner'
+// composed.summary              — human-readable one-liner for audit logs
+
+// User-initiated veto before cooldown ends:
+const cancel = composeSolanaCancelRecoveryInstruction({
+  multisigPda: 'GrAkKfEpTKQuVHG2Y97Y2FF4i7y7Q5AHLK94KB5hwkhU',
+  transactionIndex: BigInt(7),
+  member: 'UserSeatAPubkeyBase58xxxxxxxxxxxxxxxxxxxxxxxxxxxx',  // user's Seat A pubkey
+  recoveryActionId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',   // same DB row UUID — for cancel memo
+});
+// returns a single EncodedInstruction (proposalCancel)
+
+// Execute after cooldown — recompose from the persisted inner_tx:
+const exec = recomposeSolanaExecuteRecoveryInstruction({
+  innerTx: composed.innerTx,   // SolanaInnerTx from DB — NOT re-derived from scratch
+  member: '4Nd1mBQtrMJVYVfKf2PX98HegncxXSystemRecoveryKey', // Seat R — any multisig member works
+});
+// returns a single EncodedInstruction (configTransactionExecute)
+```
+
+## Solana — instruction-discriminator allowlist
+
+The package exports the canonical set of accepted instruction discriminators for
+the broadcaster's calldata-pinning check. Any instruction outside this set in a
+recovery transaction is rejected before broadcast:
+
+```ts
+import {
+  RECOVERY_ALLOWED_INSTRUCTION_HEX,
+  extractInstructionDiscriminatorHex,
+} from '@glideco/recovery';
+
+for (const ix of versionedTx.message.compiledInstructions) {
+  const disc = extractInstructionDiscriminatorHex(ix.data);
+  if (!RECOVERY_ALLOWED_INSTRUCTION_HEX.has(disc)) {
+    throw new Error(`recovery tx contains a non-recovery instruction: ${disc}`);
+  }
+}
+```
+
+The allowlist covers config-tx-create, proposal-create, proposal-approve,
+proposal-cancel, and config-transaction-execute discriminators for Squads v4.
+
+## What this package does NOT include
+
+- KMS or file-based signer loading (`ethers.Wallet`, `Keypair.fromSecretKey`, etc.).
+- Database persistence of the multi-step recovery state machine.
+- The Inngest cron that ticks queued EVM recoveries through cooldown → execute.
+- Authorization checks — "is this principal allowed to start recovery on this vault?"
+
+These live in
+[`apps/web/src/server/lib/user-multisig/`](https://github.com/darshanbathija/axtior-neobank/tree/main/apps/web/src/server/lib/user-multisig)
+in the source repo as a reference implementation operators can fork.
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — F2
+  (CAS-claim before broadcast) applies to the recovery broadcaster that
+  consumes this package's output.
+- [`@glideco/grant-wrapper`](/docs/oss/packages/grant-wrapper) — the recovery
+  flow issues a scoped grant for Seat R; `verifyGrant` gates every
+  recovery-tool call before encoding begins.
+- [Zodiac Delay Module](https://github.com/gnosisguild/zodiac-modifier-delay) —
+  upstream module reference; the constants and ABI fragments in this package
+  target v1.0.1.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/recovery)

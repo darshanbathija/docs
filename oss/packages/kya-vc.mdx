@@ -1,0 +1,125 @@
+---
+title: "@glideco/kya-vc"
+description: "AgentSanctionsPassCredential issuer. Wraps Chainalysis screening results as W3C Verifiable Credentials signed by Glide's institutional issuer key."
+icon: "id-card"
+---
+
+`AgentSanctionsPassCredential` — the agent-side mirror of KYC. Wraps a
+Chainalysis sanctions screening result in a W3C Verifiable Credential that
+institutional clients can show auditors. The credential is signed by Glide's
+institutional issuer key (a `did:web:glide.co` identity) via the
+`@glideco/kms-signer` abstraction, so the private key never leaves AWS KMS,
+GCP KMS, or HashiCorp Vault Transit.
+
+Verifiers fetch `https://glide.co/.well-known/did.json` to obtain the issuer's
+public key and verify the signature standalone — no Glide API call required at
+verification time.
+
+## Install
+
+```bash
+npm install @glideco/kya-vc @glideco/kms-signer
+```
+
+[npmjs.com/package/@glideco/kya-vc](https://www.npmjs.com/package/@glideco/kya-vc)
+
+## What the credential proves
+
+1. The agent's wallet (`did:key`, per-grant) and its delegating user's vault
+   were screened against OFAC SDN, UN Consolidated, EU financial sanctions,
+   and UK HMT lists at `issuanceDate`.
+2. The screening came back clean, or where hits occurred, each was
+   cleared (`disposition: 'cleared-false-positive'` or `'escalated'`).
+3. Credentials expire after 90 days — the regulatory norm for
+   sanctions-screening freshness. Verifiers MUST reject expired credentials.
+
+Screenings with `disposition: 'blocked'` are refused: `issueAgentSanctionsPassCredential`
+throws rather than issue a credential with an unresolved blocking hit.
+
+## Supported cryptosuites
+
+| Signer algorithm | VC proof type                     | proofValue encoding |
+| ---------------- | --------------------------------- | ------------------- |
+| `ed25519`        | `Ed25519Signature2020`            | base58btc (prefix `z`) |
+| `es256`          | `EcdsaSecp256r1Signature2019`     | base58btc (prefix `z`), IEEE P-1363 raw r‖s |
+| `es384`          | `EcdsaSecp384r1Signature2019`     | base58btc (prefix `z`), IEEE P-1363 raw r‖s (96 bytes) |
+
+`rsa256` is explicitly rejected — Glide's E19 plan targets ed25519 or es256
+(matching App Attest's P-256 curve).
+
+## Issue a credential
+
+```ts
+import { issueAgentSanctionsPassCredential } from '@glideco/kya-vc';
+import { buildEnvKeySigner } from '@glideco/kms-signer';
+
+const signer = buildEnvKeySigner({
+  privateKeyPem: process.env.ISSUER_PRIVATE_KEY_PEM!,
+  algorithm: 'ed25519',
+  nodeEnv: 'development', // throws in production — use aws/gcp/vault instead
+});
+
+const vc = await issueAgentSanctionsPassCredential({
+  screening: {
+    screeningId: '018f1a2b-0000-7000-8000-000000000001',
+    screenedAt: '2026-05-04T12:00:00Z',
+    subjectDid: 'did:key:zDnaeYr8LMXDy6dP...',
+    addresses: [{ chain: 'eth', address: '0xABCDEF1234...' }],
+    listsScreened: ['ofac-sdn', 'un-consolidated'],
+    hits: [],
+    provider: 'chainalysis',
+  },
+  issuerDid: 'did:web:glide.co',
+  signer,
+  statusListUrl: 'https://glide.co/credentials/status/1',
+  statusListIndex: 42,
+});
+```
+
+## Validate a presented credential
+
+```ts
+import {
+  parseAgentSanctionsPassCredential,
+  validateCredentialEnvelope,
+} from '@glideco/kya-vc';
+
+// 1. Parse and validate shape (throws on schema mismatch).
+const vc = parseAgentSanctionsPassCredential(inboundJson);
+
+// 2. Check issuer, expiry, proof block presence.
+const outcome = validateCredentialEnvelope(vc);
+if (!outcome.ok) {
+  throw new Error(`credential rejected: ${outcome.reason}`);
+}
+
+// 3. Caller must verify the cryptographic signature using the issuer's
+//    public key from https://glide.co/.well-known/did.json.
+```
+
+## Decode a proof value
+
+```ts
+import { decodeProofValue } from '@glideco/kya-vc';
+
+// Accepts multibase prefix `z` (base58btc) or `u` (base64url).
+const sigBytes = decodeProofValue(vc.proof!.proofValue);
+// → Uint8Array (64 bytes for ed25519 / es256; 96 bytes for es384)
+```
+
+## Revocation via StatusList2021
+
+Pass `statusListUrl` and `statusListIndex` to embed a `credentialStatus`
+block in the credential. If a screening result is later reversed (e.g.,
+disposition changed to `'blocked'`), flip the bit in the status list at
+that index — verifiers that fetch the status list will see `revoked: true`
+on their next check without requiring a new credential issuance.
+
+## Reading list
+
+- [`@glideco/kms-signer`](/docs/oss/packages/kms-signer) — KMS backends used for signing.
+- [`@glideco/agent-identity`](/docs/oss/packages/agent-identity) — produces the `did:key` that becomes the credential subject.
+- [W3C VC Data Model 1.1](https://www.w3.org/TR/vc-data-model/)
+- [StatusList 2021 revocation](https://w3c.github.io/vc-status-list-2021/)
+- [did:web method](https://w3c-ccg.github.io/did-method-web/)
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/kya-vc)

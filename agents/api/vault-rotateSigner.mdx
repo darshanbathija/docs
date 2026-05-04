@@ -94,4 +94,132 @@ Rotate the signing key for this agent's sub-vault. Always requires principal ste
 
 ## Auth
 
-Caller's grant must include the `treasury:rotate-signer` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `treasury:rotate-signer` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+# First call — no sigil: server returns step_up_url
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "vault.rotateSigner",
+    "params": {
+      "new_signer_public_key": "0x04a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      "reason": "scheduled_rotation"
+    }
+  }'
+
+# Second call — with redeemed sigil
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "vault.rotateSigner",
+    "params": {
+      "new_signer_public_key": "0x04a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      "reason": "scheduled_rotation",
+      "step_up_sigil": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9..."
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient, StepUpRequired } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const params = {
+  new_signer_public_key: '0x04a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
+  reason: 'scheduled_rotation' as const,
+};
+
+// First attempt — expect step-up
+const first = await client.call('vault.rotateSigner', params);
+if (first instanceof StepUpRequired) {
+  // Redirect user; collect sigil from callback
+  const sigil = await redirectAndCollectSigil(first.stepUpUrl);
+  const result = await client.call('vault.rotateSigner', { ...params, step_up_sigil: sigil });
+  console.log('Rotated. New policy version:', result.new_policy_version);
+}
+```
+
+```python Python
+from glide_client import GlideClient, StepUpRequired
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+params = {
+    "new_signer_public_key": "0x04a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+    "reason": "scheduled_rotation",
+}
+
+first = client.call("vault.rotateSigner", params)
+if isinstance(first, StepUpRequired):
+    sigil = redirect_and_collect_sigil(first.step_up_url)
+    result = client.call("vault.rotateSigner", {**params, "step_up_sigil": sigil})
+    print("Rotated. New policy version:", result["new_policy_version"])
+```
+
+</CodeGroup>
+
+## Response examples
+
+**Step-up required (always on first call)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32003,
+    "message": "signer rotation requires principal biometric approval",
+    "data": {
+      "reason_id": "step_up_required",
+      "step_up_url": "https://app.glide.co/step-up/confirm?sigil=eyJhbGci..."
+    }
+  }
+}
+```
+
+**Success (after sigil redemption)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "proposal_id": "f1e2d3c4-b5a6-4987-8765-432100fedcba",
+    "new_policy_version": 12,
+    "enqueued_at": "2026-05-04T14:30:00Z"
+  }
+}
+```
+
+## Errors
+
+| Code | `reason_id` | Meaning |
+| ---- | ----------- | ------- |
+| `-32000` | `unauthenticated` | Bearer token missing or expired. |
+| `-32001` | `unauthorized` | Grant does not include `treasury:rotate-signer`. |
+| `-32003` | `step_up_required` | Step-up is always required. `data.step_up_url` contains the biometric approval URL. |
+| `-32602` | `step_up_sigil_invalid` | Sigil was already redeemed, expired, or minted for a different action (`reason` mismatch). |
+| `-32602` | `invalid_params` | `new_signer_public_key` is empty or malformed. |
+| `-32603` | `internal_error` | Transient fault. Retry from step 1 (get a fresh sigil). |
+
+## Step-up flow
+
+`vault.rotateSigner` **always** requires principal step-up. There is no threshold — every rotation, including scheduled ones, requires biometric approval. The sigil is bound to the `reason` field, so a sigil minted for `grant_issue` is rejected here.
+
+1. Call `vault.rotateSigner` with `new_signer_public_key` and `reason`. The server always returns `-32003`.
+2. Redirect the principal to `data.step_up_url` (Privy biometric). On success, Glide mints a one-time `sigil` bound to `reason: "rotate_signer"`.
+3. Re-submit with `step_up_sigil: "<sigil>"`. The server verifies the sigil's `expected_reason` matches `"rotate_signer"` and that it was not already redeemed.
+4. On success, a multisig proposal is submitted on-chain. `proposal_id` can be tracked in the Actions inbox. `new_policy_version` is the post-rotation policy version.

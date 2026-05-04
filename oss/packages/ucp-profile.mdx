@@ -1,0 +1,144 @@
+---
+title: "@glideco/ucp-profile"
+description: "Builder and parser for the Universal Commerce Profile (UCP) v0.1-2026-04. Publishes the /.well-known/ucp.json discovery document for buyer-agent runtimes."
+icon: "route"
+---
+
+Builder and parser for the Universal Commerce Profile (UCP), the discovery
+layer defined by Google and Shopify that sits above AP2 (mandates) and ACP
+(commerce). UCP-aware agent runtimes — Google's commerce-router, Shopify
+Sidekick, and 20+ endorsed partners including Wayfair, Target, and Walmart —
+fetch `/.well-known/ucp.json` on first contact to learn which mandate types,
+payment rails, currencies, regions, and agent-identity formats a merchant
+supports before choosing whether to engage.
+
+This package is a wire-format adapter, not the source of truth for the UCP
+spec. When UCP ships a new version that breaks the profile schema, a new minor
+is published and `UCP_SPEC_VERSION` is bumped. Because this package imports
+`AP2_SPEC_VERSION` from `@glideco/ap2-adapter` and `ACP_SPEC_VERSION` from
+`@glideco/acp-merchant`, a version bump in either underlying spec propagates to
+the published profile automatically.
+
+## Install
+
+```bash
+npm install @glideco/ucp-profile
+```
+
+[npmjs.com/package/@glideco/ucp-profile](https://www.npmjs.com/package/@glideco/ucp-profile)
+
+## What the profile covers
+
+The profile is a JSON document at `/.well-known/ucp.json` that answers the
+questions an agent runtime asks before initiating a commerce session:
+
+- **Rails** — which payment rails are accepted (`x402`, `mpp-tempo`, `stripe-spt`, etc.)
+- **Protocols** — which commerce protocols the merchant speaks (`ap2`, `acp`, `mcp`, `x402`, `mpp`)
+- **Endpoints** — URL + pinned spec version per protocol
+- **Mandates** — which AP2 mandate types are accepted (`IntentMandate`, `CartMandate`, `PaymentMandate`)
+- **Agent identities** — trusted DID schemes (`did:key`, `did:web`, `erc-8004`)
+- **Compliance** — whether OFAC/sanctions screening and KYA checks are active
+- **Regions / currencies** — accepted ISO 3166-1 + ISO 4217 / stablecoin ticker sets
+
+The `profileSupports` function lets a smart-router filter profile documents
+against required capabilities without loading the full schema each time.
+
+## Spec version
+
+Pinned to UCP **`0.1-2026-04`** — exported as `UCP_SPEC_VERSION`. The
+`ucpVersion` field in the served JSON must equal this constant; strict UCP
+validators (Google's commerce-router, Shopify Sidekick) reject profiles with
+an unrecognized version.
+
+The `protocols` field uses a closed enum from the UCP spec: `ap2`, `acp`,
+`mcp`, `x402`, `mpp`. Custom or legacy protocol identifiers must go under an
+`x-<vendor>:` extension namespace, not in the closed enum.
+
+## API surface
+
+| Export | Description |
+| --- | --- |
+| `buildUcpProfile(args)` | Build a spec-conformant profile JSON. Defaults match Glide production surface. |
+| `parseUcpProfile(input)` | Parse + Zod-validate a remote profile (for smart-router filtering). Throws on schema violation. |
+| `profileSupports(profile, required)` | Return `true` if a profile satisfies a required capability set. |
+| `UCP_SPEC_VERSION` | `'0.1-2026-04'` — version constant echoed in the profile. |
+| `UCP_PROFILE_PATH` | `'/.well-known/ucp.json'` — canonical publish path. |
+
+## Serving the profile
+
+```ts
+// apps/web/src/app/.well-known/ucp.json/route.ts
+import { buildUcpProfile } from '@glideco/ucp-profile';
+
+export async function GET() {
+  const profile = buildUcpProfile({
+    domain: 'glide.co',
+    name: 'Glide',
+    contactEmail: 'agents@glide.co',
+    compliance: {
+      sanctionsScreening: true,
+      kya: true,
+      sanctionsProvider: 'chainalysis',
+    },
+    sla: { uptime: '99.95%', responseP95Ms: 280 },
+  });
+
+  return Response.json(profile, {
+    headers: { 'Cache-Control': 'public, max-age=3600' },
+  });
+}
+```
+
+The default `rails`, `currencies`, `regions`, `endpoints`, and
+`acceptedMandates` match Glide's production surface (USDC/USD/EUR/EURC/IDRX,
+US/EU/GB/LATAM/APAC, x402 + MPP + Stripe SPT, all three AP2 mandate types).
+Override any field to match a different deployment.
+
+## Filtering profiles in the smart-router
+
+```ts
+import { parseUcpProfile, profileSupports } from '@glideco/ucp-profile';
+
+async function findCompatibleMerchant(candidates: string[]) {
+  for (const domain of candidates) {
+    const res = await fetch(`https://${domain}/.well-known/ucp.json`);
+    let profile;
+    try {
+      profile = parseUcpProfile(await res.json());
+    } catch {
+      continue; // schema violation → skip
+    }
+
+    if (profileSupports(profile, {
+      rails: ['x402'],
+      currencies: ['USDC'],
+      regions: ['US'],
+      mandates: ['IntentMandate'],
+    })) {
+      return profile;
+    }
+  }
+  return null;
+}
+```
+
+## Compliance posture defaults
+
+`buildUcpProfile` defaults `compliance.sanctionsScreening` and `compliance.kya`
+to `true`, and `compliance.sanctionsProvider` to `'chainalysis'`. The default
+`excludedRegions` list includes IR, KP, SY, and CU (OFAC primary sanctions
+programs). Override these when operating under a different regulatory posture.
+
+Country and currency fields are validated as uppercase — lowercase `'us'` or
+`'usd'` throws at build time because UCP-aware agent runtimes use byte-equality
+on those strings, not case-insensitive comparison.
+
+## Reading list
+
+- [ConnectorManifest standard](/docs/oss/standards/connector-manifest) — how
+  protocol capabilities are declared for Glide connectors.
+- [`@glideco/ap2-adapter`](/docs/oss/packages/ap2-adapter) — mandate protocol
+  whose version is re-exported by this package.
+- [`@glideco/acp-merchant`](/docs/oss/packages/acp-merchant) — commerce
+  protocol whose version is re-exported by this package.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/ucp-profile)

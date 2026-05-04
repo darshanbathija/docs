@@ -1,0 +1,167 @@
+---
+title: "@glideco/x402-facilitator"
+description: "x402 facilitator protocol shapes + compliance pipeline. First facilitator with OFAC + Chainalysis screening standard. Pure functions; settlement IO injected by apps/web."
+icon: "shield-halved"
+---
+
+x402 facilitator protocol layer with Chainalysis-backed compliance screening.
+x402 facilitators verify off-chain payment payloads and settle them on-chain.
+Coinbase and Cloudflare run reference facilitators today with no compliance
+posture — no OFAC screening, no audit retention. Glide is the first facilitator
+with OFAC SDN, UN Consolidated, and EU sanctions screening as standard, a
+composable MCC screener, and idempotent settlement matching the same
+`pay_attempts` semantics the smart-router uses.
+
+This package is the protocol shape and orchestration layer: `VerifyRequest`,
+`VerifyResponse`, `SettleRequest`, `SettleResponse`, and the compliance-pipeline
+composer. Actual on-chain RPC calls, Chainalysis API invocations, and audit-event
+writes live in `apps/web`. The HTTP endpoints are mounted from
+`app/api/x402/facilitator/{verify,settle}/route.ts`.
+
+**F1 IRON RULE:** The facilitator's `SettleResponse.txHash` is the facilitator's
+claim, not verified fact. Operators MUST independently RPC-verify the on-chain
+transaction before persisting it to any audit row. This package surfaces the
+facilitator's response verbatim and leaves the verification step to the consumer.
+The reference implementation is the `serverFetchChainTx` dependency in the MCP
+`x402.pay` tool.
+
+## Install
+
+```bash
+npm install @glideco/x402-facilitator
+```
+
+[npmjs.com/package/@glideco/x402-facilitator](https://www.npmjs.com/package/@glideco/x402-facilitator)
+
+## Two-phase protocol
+
+x402 uses a verify-then-settle protocol:
+
+1. **`/verify`** — facilitator validates the off-chain EIP-712 payment payload and
+   runs the compliance pipeline. Returns `{isValid, invalidReason}` without
+   touching chain state.
+2. **`/settle`** — facilitator broadcasts the on-chain transaction after a
+   TOCTOU re-verify pass. Returns `{success, txHash, network}`.
+
+The `handleVerify` and `handleSettle` orchestrators implement this contract.
+Settlement uses a store-before-broadcast pattern: a pending sentinel is written
+before invoking broadcast so a process kill mid-broadcast does not re-broadcast
+on replay.
+
+## API surface
+
+| Export | Description |
+| --- | --- |
+| `handleVerify(rawRequest, deps)` | Parse + validate payload, run compliance pipeline, return `VerifyResponse`. |
+| `handleSettle(rawRequest, deps)` | Re-verify (TOCTOU defense), store sentinel, broadcast, store terminal state. |
+| `runCompliancePipeline(args, screener)` | Compose sanctions + MCC + cap screening. Short-circuits on first block. |
+| `deriveIdempotencyCacheKey(args)` | Content-bound cache key: `${idempotencyKey}:${sha256(payTo|network|payload)}`. |
+| `FACILITATOR_MAX_BODY_BYTES` | 4 MB — request size limit to bound CPU + memory. |
+| `X402_FACILITATOR_VERSION` | `'2.0'` — version echoed in `X-X402-Version` response header. |
+
+## Wiring the /verify route
+
+```ts
+// apps/web/src/app/api/x402/facilitator/verify/route.ts
+import {
+  handleVerify,
+  FACILITATOR_MAX_BODY_BYTES,
+  X402_VERSION_HEADER,
+  X402_FACILITATOR_VERSION,
+} from '@glideco/x402-facilitator';
+import { chainalysisScreener } from '@/server/lib/screeners';
+
+export async function POST(req: Request) {
+  if (Number(req.headers.get('content-length') ?? 0) > FACILITATOR_MAX_BODY_BYTES) {
+    return new Response(null, { status: 413 });
+  }
+  const body = await req.json();
+  const result = await handleVerify(body, {
+    async decodePayload({ payload, network }) {
+      // Validate EIP-712 signature, check expiry + replay
+      return eip712Decoder.decode(payload, network);
+    },
+    screener: chainalysisScreener,
+  });
+
+  return Response.json(result, {
+    headers: { [X402_VERSION_HEADER]: X402_FACILITATOR_VERSION },
+  });
+}
+```
+
+## Compliance pipeline
+
+The pipeline is composable — each screener returns `'allow' | 'block' | 'review'`.
+The first non-allow result short-circuits; `'review'` is treated as block (conservative
+posture).
+
+```ts
+import { runCompliancePipeline, type ComplianceScreener } from '@glideco/x402-facilitator';
+
+const screener: ComplianceScreener = {
+  async screenSanctions({ payerAddress, payeeAddress, network, asset, amount }) {
+    const verdict = await chainalysis.screenAddress(payerAddress);
+    return {
+      verdict: verdict.risk === 'high' ? 'block' : 'allow',
+      reason: verdict.reason ?? 'ok',
+      provider: 'chainalysis',
+      screeningId: verdict.screeningId,
+    };
+  },
+  async screenMcc({ mcc, payeeAddress }) {
+    return mccEngine.check({ mcc, payeeAddress });
+  },
+};
+
+const result = await runCompliancePipeline({
+  payerAddress: '0xPayer…',
+  payeeAddress: '0xMerchant…',
+  network: 'base',
+  asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  amount: '1000000',
+}, screener);
+
+if (result.verdict !== 'allow') {
+  console.log('Blocked by:', result.blockingResult);
+}
+```
+
+## Idempotency defense
+
+The cache key is content-bound to defend against cross-tenant cache poisoning.
+An attacker who guesses a victim's idempotency key also needs to match the
+exact `(payTo, network, paymentPayload)` triple:
+
+```ts
+import { deriveIdempotencyCacheKey } from '@glideco/x402-facilitator';
+
+const cacheKey = deriveIdempotencyCacheKey({
+  idempotencyKey: request.idempotencyKey,
+  payTo: request.paymentRequirements.payTo,
+  network: request.paymentRequirements.network,
+  paymentPayload: request.paymentPayload,
+});
+// → 'user-supplied-key:a3f8b2c1…' (SHA-256 prefix of content triple)
+```
+
+## Verify response invalidReason vocabulary
+
+| Reason | Cause |
+| --- | --- |
+| `insufficient_funds` | Payload amount exceeds on-chain balance. |
+| `invalid_signature` | EIP-712 signature verification failed. |
+| `expired` | Payment payload past `validBefore`. |
+| `replayed` | Nonce already consumed. |
+| `sanctions_block` | Payer or payee matched an OFAC / sanctions entry. |
+| `mcc_blocked` | Merchant category code on the deny list. |
+| `amount_exceeds_policy_cap` | Amount exceeds the policy-engine cap for this agent. |
+| `velocity_exceeded` | Per-period transaction velocity cap hit. |
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — the
+  F-rules, including F1 (server-side RPC verify) that governs `txHash` handling.
+- [`@repo/connectors-coinbase-x402`](/docs/oss/packages/connectors-coinbase-x402) (workspace-internal — wraps `@glideco/x402-facilitator` with Coinbase CDP integration) —
+  Coinbase CDP integration that wraps this facilitator for receiver-side flows.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/x402-facilitator)

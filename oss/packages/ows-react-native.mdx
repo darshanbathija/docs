@@ -1,0 +1,159 @@
+---
+title: "@glideco/ows-react-native"
+description: "Open Wallet Standard (OWS) provider for React Native. Exposes iOS Secure Enclave and Android StrongBox keys as a spec-conformant wallet."
+icon: "mobile-screen"
+---
+
+Open Wallet Standard (OWS) provider for React Native. Exposes Glide's
+mobile hardware-backed signer — iOS Secure Enclave on Apple devices, Android
+StrongBox on qualifying Android devices — as an OWS-conformant wallet so
+any agent runtime that discovers an OWS provider on the device can use
+Glide's hardware-attested keys without Glide-specific integration code.
+
+OWS launched March 2026 (MoonPay-led, MIT-licensed, 15+ org backers
+including PayPal, Circle, Solana Foundation, and Ethereum Foundation). The
+canonical `@open-wallet-standard/core` ships Rust, Node, and Python only;
+there is no official React Native SDK. This package fills that gap.
+
+## Install
+
+```bash
+npm install @glideco/ows-react-native
+```
+
+[npmjs.com/package/@glideco/ows-react-native](https://www.npmjs.com/package/@glideco/ows-react-native)
+
+## Why OWS?
+
+Agent runtimes (Claude, ChatGPT Plugins, Gemini extensions, custom MCP
+clients) discover wallets through the Wallet Standard event bus rather than
+hardcoding vendor SDKs. A wallet that registers on the bus becomes visible
+to any runtime that listens — no per-integration code. The OWS spec defines
+the exact event names, feature-string keys, and `WalletAccount` shape that
+runtimes expect.
+
+## CAIP-2 chains supported
+
+```ts
+OWS_SUPPORTED_CHAINS = [
+  'solana:mainnet',
+  'eip155:1',     // ethereum
+  'eip155:8453',  // base
+  'eip155:42161', // arbitrum
+  'eip155:10',    // optimism
+  'eip155:137',   // polygon
+  'eip155:5000',  // tempo
+  'stellar:pubnet',
+]
+```
+
+These are CAIP-2 identifiers — distinct from Glide's internal short-ids
+(`eth`, `sol`). `chainIdToCaip2()` from `@glideco/schemas` translates
+between them at the apps/mobile boundary.
+
+## Live features
+
+| Feature string                    | Status   |
+| --------------------------------- | -------- |
+| `standard:connect`                | live     |
+| `standard:disconnect`             | live     |
+| `standard:events`                 | live     |
+| `solana:signMessage`              | live     |
+| `ethereum:personalSign`           | live     |
+| `solana:signAndSendTransaction`   | stub (`E_NOT_IMPLEMENTED`) |
+| `solana:signTransaction`          | stub     |
+| `ethereum:signTypedData`          | stub     |
+| `ethereum:sendTransaction`        | stub     |
+| `stellar:signTransaction`         | stub     |
+
+Stubs throw an error with `code: 'E_NOT_IMPLEMENTED'`. Agent runtimes
+that probe features before calling them will route to a fallback wallet
+rather than treating Glide as non-conformant.
+
+## Wiring
+
+Build the wallet with a `OwsSignerBackend` that your app provides, then
+register it on the event bus.
+
+```ts
+import {
+  buildGlideOwsWallet,
+  registerGlideOwsWallet,
+  type OwsSignerBackend,
+} from '@glideco/ows-react-native';
+
+// Your app's hardware-backed signer.
+const enclaveBackend: OwsSignerBackend = {
+  async getAddress(chain) { /* … */ return '0xABC…'; },
+  async getPublicKey(chain) { /* … */ return 'base64url-pubkey'; },
+  async sign(request) { /* call iOS Secure Enclave / StrongBox */ },
+};
+
+const { wallet, refreshAccounts } = await buildGlideOwsWallet({
+  backend: enclaveBackend,
+  appVersion: '1.0.0',
+  chains: ['eip155:1', 'solana:mainnet'],
+  accountLabel: 'Glide Vault',
+});
+
+// Register on the Wallet Standard bus.
+// Call this at app start — before any agent runtime fires wallet-standard:app-ready.
+const { unregister } = registerGlideOwsWallet(wallet);
+
+// Call when the user switches vaults.
+await refreshAccounts();
+```
+
+## Event protocol
+
+Two registration paths co-exist:
+
+1. **Legacy**: `registerGlideOwsWallet` dispatches `wallet-standard:register-wallet`
+   on startup. Apps that pre-load wallets listen for this event and add
+   Glide to their wallet picker.
+
+2. **Modern**: `registerGlideOwsWallet` also attaches a `wallet-standard:app-ready`
+   listener. Apps that bootstrap late fire `app-ready` with a `register`
+   callback; Glide calls `register(wallet)` to introduce itself.
+
+Both events are handled. The `unregister` handle returned by
+`registerGlideOwsWallet` removes the `app-ready` listener — call it on vault
+switch before calling `registerGlideOwsWallet` again.
+
+## OwsSignerBackend contract
+
+```ts
+interface OwsSignerBackend {
+  getAddress(chain: OwsChain): Promise<string | null>;
+  getPublicKey(chain: OwsChain): Promise<string | null>;
+  sign(request: OwsSignRequest): Promise<OwsSignResult>;
+}
+
+// OwsSignRequest (internal protocol — base64url for cross-runtime portability)
+// {
+//   chain: OwsChain,
+//   address: string,        // reject on mismatch
+//   message: string,        // raw bytes, base64url
+//   typedData?: boolean,    // true = EIP-712 JSON-encoded typed data
+//   reason: string,         // shown in biometric prompt, max 200 chars
+// }
+```
+
+Returning `null` from `getAddress` or `getPublicKey` signals that the backend
+has no key for that chain; `buildGlideOwsWallet` omits that chain from
+`wallet.accounts`.
+
+## Duplicate chain guard
+
+`buildGlideOwsWallet` throws if `chains` contains duplicate CAIP-2 entries.
+Agent runtimes dispatch via `wallet.chains.includes(target)` and pick the
+first match; duplicates cause the `change` event to fire twice for the same
+chain on `refreshAccounts`.
+
+## Reading list
+
+- [Wallet Standard spec](https://wallet-standard.com/wallet)
+- [Open Wallet Standard GitHub](https://github.com/wallet-standard/wallet-standard)
+- [`@glideco/agent-identity`](/docs/oss/packages/agent-identity) — the `did:key` that backs the signing address.
+- [`@glideco/schemas`](/docs/oss/packages/schemas) — `chainIdToCaip2()` for translating Glide chain ids to OWS CAIP-2 form.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/ows-react-native)

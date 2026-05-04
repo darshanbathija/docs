@@ -1,0 +1,135 @@
+---
+title: "@glideco/a2a-resolver"
+description: "Resolve agent_did counterparties to settling addresses via ERC-8004, ENS ENSIP-9, did:web, or Glide-internal vault lookup."
+icon: "id-card"
+---
+
+Resolves `agent_did` counterparties to on-chain settling addresses. Four resolution schemes: Glide-internal same-tenant vault (free, instant), ERC-8004 Identity Registry (Ethereum mainnet), ENS multi-chain addresses via ENSIP-9, and `did:web` HTTPS document fetch. Ships a DNS-rebinding-safe fetch helper for the `did:web` path.
+
+Pure functions with injected resolver implementations. On-chain reads and network IO live in `apps/web`.
+
+## Install
+
+```bash
+npm install @glideco/a2a-resolver
+```
+
+[npmjs.com/package/@glideco/a2a-resolver](https://www.npmjs.com/package/@glideco/a2a-resolver)
+
+## Why a resolution chain
+
+Agents reference each other by DID, not by a fixed on-chain address. A DID-addressed counterparty can route to whichever chain the recipient prefers today and change that preference later. The resolution chain runs in priority order — Glide-internal first (cheapest), then on-chain registries, then the HTTPS document fallback — so same-tenant payments are never sent on-chain when an internal vault hop is available.
+
+ERC-8004 went live on Ethereum mainnet on 2026-01-29. The `did:erc8004` scheme is the canonical anchor for agents with on-chain identity. ENS (`did:ens`) and `did:web` support agents that predate ERC-8004 or prefer off-chain identity.
+
+## DID URI schemes
+
+| Scheme | Format | Resolution path |
+| --- | --- | --- |
+| `did:key` | `did:key:z<base58btc>` | Glide-internal tenant lookup by `agent_principals.did_key` |
+| `did:erc8004` | `did:erc8004:0x<64 hex>` | On-chain `resolveAgent(bytes32)` via viem |
+| `did:ens` | `did:ens:<name>.eth` | ENS multi-chain addresses (ENSIP-9) |
+| `did:web` | `did:web:<domain>` | HTTPS fetch of `<domain>/.well-known/did.json` |
+
+## Resolving a counterparty
+
+```ts
+import { resolveAgentDid } from '@glideco/a2a-resolver';
+
+const outcome = await resolveAgentDid(
+  {
+    kind: 'agent_did',
+    did: 'did:web:agent.example.com',
+    preferredChain: 'base',
+    preferredToken: 'USDC',
+  },
+  {
+    resolveDidWeb: async (did) => {
+      // apps/web injects safeFetchDidWeb here
+      const doc = await safeFetchDidWeb(did);
+      return extractSettlingAddress(doc, preferredChain, preferredToken);
+    },
+  }
+);
+
+if (outcome.ok) {
+  // outcome.resolved.address  → '0xabc...def'
+  // outcome.resolved.chain    → 'base'
+  // outcome.resolved.token    → 'USDC'
+  // outcome.resolved.source   → 'did-web'
+  // outcome.resolved.confidence → 0.8
+} else {
+  // outcome.reason → 'no resolver could map ... to a settling address'
+}
+```
+
+The `deps` object is the injection point. Pass only the resolvers your environment supports — the orchestrator skips schemes with no injected resolver.
+
+## Validation
+
+```ts
+import { isValidAgentDid, classifyAgentDid } from '@glideco/a2a-resolver';
+
+isValidAgentDid('did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK');
+// → true
+
+isValidAgentDid('did:web:metadata.aws.internal');
+// → false (caught by regex before any fetch)
+
+classifyAgentDid('did:erc8004:0x' + 'a'.repeat(64));
+// → 'did:erc8004'
+```
+
+`isValidAgentDid` enforces:
+- `did:key` — base58btc alphabet only (`z` prefix, no `0OIl`).
+- `did:web` — requires at least one dot, no IPv4 literals, no IPv6 brackets, TLD ≥ 2 ASCII letters.
+- `did:erc8004` — exactly 64 hex digits (bytes32, not bytes20/EVM address).
+- Max length 512 to prevent regex-DoS on pathological inputs.
+
+## DNS-rebinding-safe did:web fetch
+
+String-level validation alone doesn't prevent SSRF — a public domain can have an A record pointing at `169.254.169.254` or an RFC 1918 address. `safeFetchDidWeb` resolves the hostname first, rejects if any A/AAAA record is private, then connects via undici with the pre-resolved IP pinned so a rebinding attack between the resolution and the TCP connect can't swap the destination.
+
+```ts
+import { safeFetchDidWeb, isPublicIp } from '@glideco/a2a-resolver';
+
+// isPublicIp covers: loopback, link-local, RFC 1918, CGNAT,
+// multicast, cloud metadata IPs (100.100.100.200, 168.63.129.16, etc.)
+isPublicIp('192.168.1.1');         // false
+isPublicIp('100.100.100.200');     // false (Alibaba metadata)
+isPublicIp('2600:1f18::1');        // true
+
+const didDoc = await safeFetchDidWeb('did:web:agent.example.com', {
+  timeoutMs: 3000,
+  maxBodyBytes: 512 * 1024,
+});
+```
+
+## Audit trail
+
+```ts
+import { buildA2aAuditRecord } from '@glideco/a2a-resolver';
+
+const record = buildA2aAuditRecord({
+  senderDid: 'did:key:z6Mk...',
+  recipient: { kind: 'agent_did', did: 'did:web:agent.example.com' },
+  resolved: outcome.resolved,
+  paymentId: 'pay_abc123',
+  amountCents: 5000,
+  currency: 'USD',
+});
+
+// record.event_type           → 'a2a.payment.routed'
+// record.resolution_source    → 'did-web'
+// record.resolution_confidence → 0.8
+// Append to mcp_audit_events.
+```
+
+The audit record captures both sender and recipient DID so the `mcp_audit_events` table stores the full A2A graph — needed for ERC-8004 reputation feedback in a future release.
+
+## Reading list
+
+- [ERC-8004 standard](https://eips.ethereum.org/EIPS/eip-8004) — the on-chain identity registry this package resolves against.
+- [Agent identity schema](/docs/oss/standards/agent-identity) — the `did_key` column on `agent_principals` that backs Glide-internal resolution.
+- [`@glideco/smart-router`](/docs/oss/packages/smart-router) — routes the settled address returned by this resolver onto the cheapest available rail.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/a2a-resolver)

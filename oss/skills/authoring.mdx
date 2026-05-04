@@ -12,10 +12,10 @@ Adding a new agent skill is the second flywheel beyond connectors. Skills sit on
   <Step title="Open a `New skill` issue first">
     Use the [`new-skill` issue template](https://github.com/darshanbathija/axtior-neobank/issues/new?template=new-skill.yml). Include slug, runtimes, scopes, policy template, consent summary, and rationale.
   </Step>
-  <Step title="Read `@glide/skills-base`">
+  <Step title="Read `@glideco/skills-base`">
     The `SkillManifest` Zod schema is the source of truth for what a skill manifest must contain — slug, runtime compat, required scopes, policy template, consent summary, trust tier, publisher.
 
-    Closed vocabularies (`SkillTrustTier`, `SkillRuntime`, `SkillCategory`, `SkillScope`) are CODEOWNERS-protected. Adding a new entry requires `@glide/policy-engine` to understand the same vocabulary.
+    Closed vocabularies (`SkillTrustTier`, `SkillRuntime`, `SkillCategory`, `SkillScope`) are CODEOWNERS-protected. Adding a new entry requires `@glideco/policy-engine` to understand the same vocabulary.
   </Step>
   <Step title="Scaffold the package">
     ```
@@ -52,10 +52,10 @@ Adding a new agent skill is the second flywheel beyond connectors. Skills sit on
     Per-tier exposure must increase monotonically (`supervise < rideAlong < trust < veteran`). The contract test enforces this.
   </Step>
   <Step title="Write the contract test">
-    Extend `SkillContractTestSuite` from `@glide/skills-base`:
+    Extend `SkillContractTestSuite` from `@glideco/skills-base`:
 
     ```ts
-    import { SkillContractTestSuite } from '@glide/skills-base';
+    import { SkillContractTestSuite } from '@glideco/skills-base';
     import { manifest } from '../manifest';
 
     class MySkillSuite extends SkillContractTestSuite {

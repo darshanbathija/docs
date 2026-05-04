@@ -70,7 +70,9 @@ Re-issue this agent's grant under the current policy version when the new policy
           "cards:manage",
           "agent:budget:create",
           "agent:budget:revoke",
+          "beneficiary:read",
           "beneficiary:write",
+          "kyc:start",
           "x402:pay",
           "x402:receive",
           "audit:stream",
@@ -106,6 +108,140 @@ Re-issue this agent's grant under the current policy version when the new policy
 }
 ```
 
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "agent.grant.refresh",
+    "params": {}
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// Refresh the current grant — re-issues under latest policy if unchanged or narrowed
+const result = await client.call('agent.grant.refresh', {});
+
+if (result.policy_changed) {
+  console.log(
+    `Policy narrowed from v${result.old_policy_version} to v${result.new_policy_version}`
+  );
+}
+
+// Use the new bearer token for subsequent calls
+console.log(`New grant: ${result.grant_id}, expires: ${result.expires_at}`);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("agent.grant.refresh", {})
+
+if result["policy_changed"]:
+    print(
+        f"Policy narrowed from v{result['old_policy_version']} "
+        f"to v{result['new_policy_version']}"
+    )
+
+print(f"New grant: {result['grant_id']}, expires: {result['expires_at']}")
+```
+
+</CodeGroup>
+
+## Response examples
+
+Successful response — policy unchanged (pure TTL extension):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "grant_id": "g8h9i0j1-k2l3-4567-m012-567890123456",
+    "bearer_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNGU1ZjZhNyIsInNjb3BlIjpbImFjY291bnRzOnJlYWQiLCJwYXltZW50czppbml0aWF0ZSJdfQ.newsignature",
+    "expires_at": "2026-05-04T13:30:00Z",
+    "scope": ["accounts:read", "payments:initiate"],
+    "old_policy_version": 3,
+    "new_policy_version": 3,
+    "policy_changed": false
+  }
+}
+```
+
+Successful response — policy narrowed (scope reduced by org admin):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "grant_id": "h9i0j1k2-l3m4-5678-n123-678901234567",
+    "bearer_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNGU1ZjZhNyIsInNjb3BlIjpbImFjY291bnRzOnJlYWQiXX0.newsignature",
+    "expires_at": "2026-05-04T13:30:00Z",
+    "scope": ["accounts:read"],
+    "old_policy_version": 3,
+    "new_policy_version": 4,
+    "policy_changed": true
+  }
+}
+```
+
+Error — new policy expands authority (caller must use `agent.grant.issue` with step-up):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "new policy version 5 expands authority (daily_limit increased from 5000 to 10000); use agent.grant.issue with step-up",
+    "data": {
+      "reason_id": "policy_broadened_requires_step_up"
+    }
+  }
+}
+```
+
+Error — policy envelope missing for vault (data integrity issue):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "policy version 3 on vault a1b2c3d4-e5f6-7890-abcd-ef1234567890 is not on file; agent.grant.refresh cannot validate narrowing without it",
+    "data": {
+      "reason_id": "old_envelope_missing"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | New policy expands authority vs issue-time version; policy envelope missing or fails schema validation | Use `agent.grant.issue` with step-up to acquire broader scope; contact support if envelope missing |
+| `-32000` | Unauthenticated | Missing `Authorization` header | Supply a valid `Bearer` token |
+| `-32001` | Unauthorized | Grant token expired or revoked | Issue a new grant via `agent.grant.issue` (step-up required) |
+| `-32002` | Insufficient scope | Grant missing `agent:budget:create` scope | Issue new grant with `agent:budget:create` scope |
+| `-32603` | Internal error | Server-side error | Retry with backoff; contact support |
+
 ## Auth
 
-Caller's grant must include the `agent:budget:create` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `agent:budget:create` scope. Grants whose scope set is a superset of the required scope are accepted.

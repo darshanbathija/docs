@@ -1,0 +1,300 @@
+---
+title: "Build a connector"
+description: "Copy the example scaffold, write a ConnectorManifest, implement Banking and Screening capabilities, run the contract test suite, and open a PR. About 45 minutes."
+icon: "plug"
+---
+
+This recipe walks the full connector authoring workflow using the `build-a-connector-stripe-clone` example as the worked model. You will copy the scaffold, fill in `manifest.ts` with your vendor's details, implement the `Banking` and `Screening` capability interfaces, run the contract tests, and confirm the package is ready to publish.
+
+Audience: engineers who want to plug a new payment rail or compliance vendor into the Glide OSS stack.
+
+## Prerequisites
+
+- The [axtior-neobank repo](https://github.com/darshanbathija/axtior-neobank) cloned locally with `pnpm install` run at the root.
+- Node 22+ and pnpm.
+- Read the [ConnectorManifest schema](/oss/standards/connector-manifest) before starting — the manifest is the contract between your connector and the registry.
+
+## Steps
+
+### 1. Copy the example scaffold
+
+No scaffolding CLI exists. Copy the working example directly:
+
+```bash
+cp -r examples/build-a-connector-stripe-clone packages/connectors/my-vendor
+```
+
+The scaffold gives you:
+
+```
+packages/connectors/my-vendor/
+  src/
+    manifest.ts                   # ConnectorManifest definition
+    contract-test.ts              # vitest contract suite
+    capabilities/
+      banking.ts                  # Banking capability stub
+      screening.ts                # Screening capability stub
+  package.json
+  tsconfig.json
+  vitest.config.ts
+```
+
+Rename the package in `package.json` and update the `slug` in `manifest.ts` before doing anything else.
+
+### 2. Write the `ConnectorManifest`
+
+Edit `src/manifest.ts`. Every field is validated by the registry at boot and by the M5 CI gate.
+
+```ts
+// src/manifest.ts
+import type { ConnectorManifest } from '@repo/connectors-base';
+
+export const manifest: ConnectorManifest = {
+  schemaVersion: 'v1',
+  slug: 'my-vendor',          // globally unique; lowercase kebab-case
+  displayName: 'My Vendor',
+  vendor: 'My Vendor Inc.',
+  // trust tiers: 'community' | 'verified' | 'core'
+  // Start with 'community'. Bumping to 'verified' requires a separate
+  // PR with a signed Trusted Partner Agreement + 2 core reviewers (M5 CI gate).
+  trust: 'community',
+  capabilities: ['banking', 'screening'],
+  regions: ['US', 'GB'],      // ISO 3166-1 alpha-2
+  currencies: ['USD', 'GBP'],
+  // Every hostname your connector calls at runtime. The egress-host lint
+  // CI gate rejects fetch() targets that are not listed here.
+  egressHosts: ['api.my-vendor.example'],
+  compliance: {
+    jurisdictions: ['US', 'GB'],
+    licenses: ['FinCEN MSB #31000123456789'],
+    dataResidency: ['US'],
+    amlPosture: 'vendor-screened',
+    retentionDays: 2555,  // 7 years
+  },
+  packageVersion: '0.1.0',
+  homepage: 'https://my-vendor.example/docs',
+  iconPath: './icon.svg',
+  isMock: true,  // flip to false when connecting to a real API
+};
+```
+
+`isMock: true` blocks loading in `NODE_ENV=production` unless `GLIDE_ALLOW_MOCKS_IN_PROD=true` is set.
+
+Validate the manifest against the published JSON Schema at
+`glide.co/schemas/agent-banking/v1/ConnectorManifest.json` using any AJV-based tool,
+or run the contract test suite in step 5 — it validates the manifest as its first check.
+
+### 3. Implement the `Banking` capability
+
+The `Banking` interface lives in `@repo/connectors-base` (workspace-internal package).
+Import `BankTransferArgs` from there — not from `@glideco/schemas`.
+
+```ts
+// src/capabilities/banking.ts
+import type { Banking, BankAccount, BankTransferArgs } from '@repo/connectors-base';
+import type { CallContext } from '@repo/connectors-base';
+
+const DEMO_ACCOUNTS: BankAccount[] = [
+  {
+    accountRef: 'my-vendor-acct-001',
+    accountHolder: 'Acme Corp',
+    routing: '021000021',
+    accountNumber: '***1234',
+    currency: 'USD',
+    country: 'US',
+  },
+];
+
+let txCounter = 1000;
+
+export const banking: Banking = {
+  async listAccounts(_ctx: CallContext): Promise<BankAccount[]> {
+    // Production: GET https://api.my-vendor.example/v1/accounts
+    // using ctx.credentials to resolve the OAuth token for this tenant.
+    return DEMO_ACCOUNTS;
+  },
+
+  async initiateTransfer(
+    _ctx: CallContext,
+    args: BankTransferArgs
+  ): Promise<{ vendorTxId: string; status: 'pending' | 'settled' | 'failed' }> {
+    // Production: POST https://api.my-vendor.example/v1/transfers
+    if (!args.amount || Number(args.amount) <= 0) {
+      return { vendorTxId: '', status: 'failed' };
+    }
+    return { vendorTxId: `my-vendor-tx-${++txCounter}`, status: 'pending' };
+  },
+};
+```
+
+`BankTransferArgs` fields: `fromAccountRef`, `toAccountRef`, `amount` (string decimal),
+`currency`, and optional `reference`.
+
+### 4. Implement the `Screening` capability
+
+```ts
+// src/capabilities/screening.ts
+import type { Screening, ScreenSubject, ScreeningResult } from '@repo/connectors-base';
+import type { CallContext } from '@repo/connectors-base';
+
+const BLOCKED = new Set(['0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000']);
+
+export const screening: Screening = {
+  async screen(_ctx: CallContext, subject: ScreenSubject): Promise<ScreeningResult> {
+    if (subject.kind === 'address') {
+      const addr = (subject.address ?? '').toLowerCase();
+      if (BLOCKED.has(addr)) {
+        return {
+          decision: 'block',
+          matchedLists: ['OFAC-SDN'],
+          riskScore: 100,
+          vendorRef: `my-vendor-screen-${Date.now()}`,
+        };
+      }
+    }
+
+    if (subject.kind === 'person' && subject.fullName?.toLowerCase().includes('evil corp')) {
+      return {
+        decision: 'review',
+        matchedLists: ['EU-consolidated'],
+        riskScore: 75,
+        vendorRef: `my-vendor-screen-${Date.now()}`,
+      };
+    }
+
+    return {
+      decision: 'pass',
+      matchedLists: [],
+      riskScore: 0,
+      vendorRef: `my-vendor-screen-${Date.now()}`,
+    };
+  },
+};
+```
+
+### 5. Run the contract test suite
+
+The suite from `@repo/connectors-base` validates three things in order:
+
+1. Manifest is valid against `ConnectorManifest` v1.
+2. Every declared capability has a runtime implementation.
+3. No undeclared egress hosts.
+
+```ts
+// src/contract-test.ts
+import { describe, it, expect, beforeAll } from 'vitest';
+import {
+  ContractTestSuite,
+  type CapabilityRuntime,
+  type ContractTestReport,
+} from '@repo/connectors-base';
+import { manifest } from './manifest.js';
+import { screening } from './capabilities/screening.js';
+import { banking } from './capabilities/banking.js';
+
+class MyVendorContractSuite extends ContractTestSuite {
+  readonly manifest = manifest;
+  readonly runtime: CapabilityRuntime = { screening, banking };
+}
+
+const suite = new MyVendorContractSuite();
+let report: ContractTestReport;
+
+beforeAll(() => { report = suite.run(); });
+
+describe('my-vendor connector contract suite', () => {
+  it('manifest is valid', () => {
+    expect(report.manifestValid).toBe(true);
+  });
+
+  it('all declared capabilities have runtime implementations', () => {
+    expect(report.missingCapabilities).toHaveLength(0);
+  });
+
+  it('no undeclared egress hosts', () => {
+    expect(report.undeclaredEgressHosts).toHaveLength(0);
+  });
+
+  it('banking.listAccounts returns accounts', async () => {
+    const accounts = await banking.listAccounts({} as never);
+    expect(accounts.length).toBeGreaterThan(0);
+    expect(accounts[0]).toHaveProperty('accountRef');
+  });
+
+  it('banking.initiateTransfer returns vendorTxId', async () => {
+    const result = await banking.initiateTransfer({} as never, {
+      fromAccountRef: 'my-vendor-acct-001',
+      toAccountRef: 'my-vendor-acct-002',
+      amount: '100.00',
+      currency: 'USD',
+      reference: 'INV-2026-001',
+    });
+    expect(result.vendorTxId).toMatch(/^my-vendor-tx-/u);
+    expect(result.status).toBe('pending');
+  });
+
+  it('screening.screen blocks the demo blocked address', async () => {
+    const result = await screening.screen({} as never, {
+      kind: 'address',
+      address: '0xDeAdDeAdDeAdDeAdDeAdDeAdDeAdDeAdDeAd0000',
+    });
+    expect(result.decision).toBe('block');
+  });
+});
+```
+
+Run:
+
+```bash
+pnpm --filter @glide-connectors/my-vendor test
+```
+
+The repo has 8 CI gates; all must pass before a PR is reviewed. Run `pnpm validate` at the
+root to chain `turbo lint + check-types` alongside the contract tests.
+
+### 6. Open a PR
+
+Follow `CONTRIBUTING.md`. The checklist items a connector PR must cover:
+
+- Contract tests pass (manifest valid, no missing capabilities, no undeclared egress hosts).
+- `DISCLAIMER.md` and `COMPLIANCE.md` present and filled in (copy from an existing connector as a template).
+- `egressHosts` verified against the vendor's live API docs.
+- `isMock: false` set OR a note in the PR that sandbox credentials are pending.
+- `trust: 'community'` until the Trusted Partner Agreement is signed.
+
+## Run it
+
+```bash
+pnpm --filter @glide-connectors/my-vendor test
+```
+
+Expected output:
+
+```
+ ✓ manifest is valid
+ ✓ all declared capabilities have runtime implementations
+ ✓ no undeclared egress hosts
+ ✓ banking.listAccounts returns accounts
+ ✓ banking.initiateTransfer returns vendorTxId
+ ✓ screening.screen blocks the demo blocked address
+
+Test Files  1 passed
+Tests       6 passed
+```
+
+## Extend it
+
+- Add a `card` capability to handle card issuance if the vendor supports it — declare `'card'` in `manifest.capabilities` and implement the `Card` interface from `@repo/connectors-base`.
+- Wire the connector into the demo stack by setting `GLIDE_USE_MOCK_CONNECTORS=false` in `.env` once you have real sandbox credentials.
+- Publish under `@glideco/connector-my-vendor` using `node scripts/publish-glide-connector.mjs my-vendor` once the TPA is signed and trust is bumped to `'verified'`.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/build-a-connector-stripe-clone](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/build-a-connector-stripe-clone)
+
+## Reading list
+
+- [ConnectorManifest schema](/oss/standards/connector-manifest) — every field, enum values, and CI gate rules.
+- [TrustTier schema](/oss/standards/trust-tier) — `community | verified | core` and what each requires to unlock.
+- [Capability interfaces](/oss/connectors/capabilities) — `Banking`, `Screening`, `Card`, and the other capability contracts.
+- [CONTRIBUTING.md](https://github.com/darshanbathija/axtior-neobank/blob/main/CONTRIBUTING.md) — PR checklist and CODEOWNERS rules for the `trust` field bump.

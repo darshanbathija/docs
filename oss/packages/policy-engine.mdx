@@ -1,0 +1,188 @@
+---
+title: "@glideco/policy-engine"
+description: "Pure-function policy-envelope evaluator for Glide agent banking. 14 axes, default-deny, chain-agnostic. Returns ALLOW / ALLOW_WITH_STEP_UP / DENY with reason codes."
+icon: "shield-halved"
+---
+
+Pure-function evaluator for Glide's `AgentPolicyEnvelope`. Given an envelope
+and a `PolicyRequest`, `evaluate()` checks 14 independent policy axes and
+returns a typed verdict with per-axis reason codes. No DB access, no network
+calls, no side effects — the caller is responsible for fetching velocity
+aggregates and for deciding whether the verdict enforces on Privy programmable
+signing policy (EVM) or in a Redis state layer (Solana stateful axes).
+
+The evaluator has default-deny semantics: any configured axis that cannot be
+checked because required input is missing yields a `deny` reason rather than
+silently passing. Axes that are `undefined` or carry empty arrays on the
+envelope are skipped — "not configured" is not the same as "deny all" for most
+axes (see the empty-allowlist table below).
+
+## Install
+
+```bash
+npm install @glideco/policy-engine
+```
+
+[npmjs.com/package/@glideco/policy-engine](https://www.npmjs.com/package/@glideco/policy-engine)
+
+## Why pure functions?
+
+A stateful evaluator couples tests to DB fixtures or Redis state. A pure
+evaluator is a unit-testable function: every policy scenario is a data fixture
+in a `describe` block. The caller fetches velocity aggregates from wherever they
+live (Redis, Privy state, a Postgres materialized view) and passes them in as
+`VelocityContext`. The engine doesn't care which source they came from.
+
+This also means the engine is chain-agnostic. On EVM, Privy programmable signing
+enforces `per_tx_max`, `counterparty_allowlist`, and `chain_allowlist` natively.
+On Solana, stateful axes (`daily_cap`, `velocity_max_txs_per_day`) enforce in
+the router's Redis layer. The same `evaluate()` call drives both paths.
+
+## The 14 policy axes
+
+| Axis                                  | Input required                         | Empty-array semantic |
+| ------------------------------------- | -------------------------------------- | -------------------- |
+| `chain_allowlist`                     | `request.counterparty.chain`           | `deny` when counterparty is present |
+| `amount_cap_cents_per_tx`             | `request.amount_cents`                 | n/a (number)         |
+| `amount_cap_cents_per_day`            | `velocity_context.amount_cents_spent_today` | n/a (number)    |
+| `amount_cap_cents_lifetime`           | `velocity_context.amount_cents_spent_lifetime` | n/a (number) |
+| `step_up_amount_cents`                | `request.amount_cents`                 | n/a (soft trigger)   |
+| `counterparty_allowlist`              | `request.counterparty`                 | `open` (any counterparty allowed) |
+| `mcc_blocklist`                       | `request.mcc`                          | no-op                |
+| `mcc_allowlist`                       | `request.mcc`                          | `open` (any MCC allowed) |
+| `geo_allowlist`                       | `request.geo`                          | `open` (any geo allowed) |
+| `time_window_start`                   | `request.requested_at_unix`            | n/a (optional)       |
+| `time_window_end`                     | `request.requested_at_unix`            | n/a (optional)       |
+| `velocity_max_txs_per_hour`           | `velocity_context.txs_in_last_hour`    | n/a (number)         |
+| `velocity_max_txs_per_day`            | `velocity_context.txs_in_last_day`     | n/a (number)         |
+| `velocity_multiple_of_baseline_threshold` | `velocity_context.txs_in_last_hour` + `velocity_context.baseline_txs_per_hour` | n/a (number) |
+
+`chain_allowlist: []` + a counterparty present → `deny`. This is the one axis
+that defaults to deny rather than open when empty, because chain restriction is a
+required posture for any agent that can transact.
+
+## Basic evaluation
+
+```ts
+import { evaluate } from '@glideco/policy-engine';
+import type { AgentPolicyEnvelope, PolicyRequest } from '@glideco/policy-engine';
+
+const envelope: AgentPolicyEnvelope = {
+  chain_allowlist: ['base', 'ethereum'],
+  amount_cap_cents_per_tx: 50_000,       // $500.00
+  amount_cap_cents_per_day: 500_000,     // $5,000.00
+  step_up_amount_cents: 25_000,          // step-up at $250.00
+  counterparty_allowlist: [
+    { address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', chain: 'base', token: 'USDC' },
+  ],
+  mcc_blocklist: ['7995', '7994'],       // gambling MCCs
+  mcc_allowlist: [],                     // [] = open (allow any other MCC)
+  geo_allowlist: [],                     // [] = open (allow any geo)
+  velocity_max_txs_per_hour: 10,
+  velocity_max_txs_per_day: 50,
+};
+
+const request: PolicyRequest = {
+  action: 'transfer.sendUsdc',
+  amount_cents: 30_000,                  // $300.00 — above step-up threshold
+  currency: 'USDC',
+  counterparty: {
+    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    chain: 'base',
+    token: 'USDC',
+  },
+  requested_at_unix: Math.floor(Date.now() / 1000),
+  velocity_context: {
+    txs_in_last_hour: 2,
+    txs_in_last_day: 8,
+    amount_cents_spent_today: 45_000,    // $450.00 already spent today
+    amount_cents_spent_lifetime: 210_000,
+    baseline_txs_per_hour: 3,
+  },
+};
+
+const verdict = evaluate(envelope, request);
+// → { verdict: 'allow_with_step_up', reasons: [{ axis: 'step_up', ... }] }
+```
+
+## Handling deny
+
+Any deny reason wins over a step-up trigger. The reasons array contains one
+entry per failing axis:
+
+```ts
+const overCap = evaluate(envelope, {
+  ...request,
+  amount_cents: 60_000,  // exceeds per_tx cap of 50_000
+});
+// → { verdict: 'deny', reasons: [{ axis: 'amount_per_tx', reason_id: 'per_tx_cap_exceeded', message: '...' }] }
+
+// Multiple axes failing:
+const multi = evaluate(envelope, {
+  ...request,
+  amount_cents: 60_000,
+  counterparty: { address: '0xunknown', chain: 'arbitrum', token: 'USDC' },
+});
+// → { verdict: 'deny', reasons: [
+//     { axis: 'chain', reason_id: 'chain_not_allowed', ... },
+//     { axis: 'amount_per_tx', reason_id: 'per_tx_cap_exceeded', ... },
+//   ] }
+```
+
+## Missing velocity context
+
+If the envelope configures a stateful axis (daily cap, velocity limits) but the
+caller omits `velocity_context`, the evaluator returns `deny` with reason
+`nil_input_velocity_context` rather than silently passing:
+
+```ts
+const missing = evaluate(envelope, {
+  action: 'transfer.sendUsdc',
+  amount_cents: 10_000,
+  currency: 'USDC',
+  requested_at_unix: Math.floor(Date.now() / 1000),
+  // velocity_context omitted
+});
+// → { verdict: 'deny', reasons: [
+//     { axis: 'amount_per_day', reason_id: 'nil_input_velocity_context', ... },
+//     { axis: 'velocity_hour',  reason_id: 'nil_input_velocity_context', ... },
+//     { axis: 'velocity_day',   reason_id: 'nil_input_velocity_context', ... },
+//   ] }
+```
+
+## Narrowing detection for grant refresh
+
+The package also exports `isNarrowingOrUnchanged`, used by the
+`agent.grant.refresh` MCP tool to determine whether a policy update is safe to
+apply without a principal step-up:
+
+```ts
+import { isNarrowingOrUnchanged } from '@glideco/policy-engine';
+
+const check = isNarrowingOrUnchanged(oldEnvelope, newEnvelope);
+if (check.narrowed) {
+  // New policy is same or stricter on every axis — refresh without step-up.
+  await refreshGrant(grantId, newPolicyVersion);
+} else {
+  // check.reason + check.details describe which axis was broadened.
+  // Caller must use agent.grant.issue with principal step-up instead.
+  return { error: 'policy_broadened', detail: check.reason };
+}
+```
+
+Narrowing is checked per-axis:
+- Amount caps: tighter = smaller number, or newly defined where previously absent.
+- Allowlists: tighter = subset of the old list (every new entry must be in the old set).
+- Blocklist: tighter = superset of the old list (removing a blocked MCC is broadening).
+- Any single broadening on any axis → `narrowed: false`.
+
+## Reading list
+
+- [AgentPolicyEnvelope schema](https://glide.co/schemas/agent-banking/v1/agent-policy-envelope.json) —
+  the canonical schema for the envelope this package evaluates.
+- [`@glideco/grant-wrapper`](/docs/oss/packages/grant-wrapper) — calls
+  `evaluate()` indirectly; `ctx.policy_version` from `verifyGrant` feeds the
+  stale-policy detection path.
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — the
+  F-rules that this engine's default-deny semantics reinforce.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/policy-engine)

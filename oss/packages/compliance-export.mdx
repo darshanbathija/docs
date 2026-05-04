@@ -1,0 +1,231 @@
+---
+title: "@glideco/compliance-export"
+description: "Range validation, monthly sharding, envelope builder, S3 signed-URL refresh, and retention-tier storage adapters for agent activity-log exports."
+icon: "file-export"
+---
+
+Compliance export primitives for the Glide agent activity log. The package
+covers four concerns that every compliant export pipeline shares: validating the
+requested range against the OSS plan §M4 quota, splitting multi-year requests
+into calendar-month shards (one DB row per shard), building the signed JSON
+envelope that ships to the reviewer, and keeping S3 signed URLs from expiring
+between the time a job enqueues and the time the operator's UI polls for it.
+
+A fifth concern — retention lifecycle — is handled by three concrete S3 storage
+adapters that share a `RetentionStorage` interface. The retention-sweep cron
+picks a storage class per row based on its age tier without coupling to the
+concrete S3 client.
+
+The package is DB-agnostic and S3-client-agnostic. Operators wire their own
+`@aws-sdk/client-s3` instance, storage bucket, and DB driver.
+
+## Install
+
+```bash
+npm install @glideco/compliance-export
+```
+
+[npmjs.com/package/@glideco/compliance-export](https://www.npmjs.com/package/@glideco/compliance-export)
+
+## Why not bundle the S3 client?
+
+Taking `@aws-sdk/client-s3` as a hard dependency would pin the major version and
+add ~2 MB to every install even for operators who archive to GCS or Cloudflare
+R2. The `S3SendableClient` and `S3CommandFactory` interfaces accept any object
+whose `send()` method returns the expected shape — the AWS SDK satisfies them out
+of the box; a GCS presigned-URL shim satisfies them with a thin adapter.
+
+The same logic applies to the DB: export envelope rows live in `compliance_exports`
+however the operator manages that table, and the package makes no assumption
+about the ORM or driver.
+
+## Range validation and monthly sharding
+
+The OSS plan §M4 caps a single export at one year. `validateRange` enforces
+this; `splitIntoMonthlyShards` produces one UTC calendar-month shard per month
+in a longer range, each safe to pass as a single-shot export:
+
+```ts
+import {
+  validateRange,
+  splitIntoMonthlyShards,
+} from '@glideco/compliance-export';
+import { parseISO } from 'date-fns';
+
+const range = {
+  since: parseISO('2025-01-01T00:00:00Z'),
+  until: parseISO('2026-06-30T23:59:59Z'),
+};
+
+const v = validateRange(range);
+if (v.ok) {
+  // Within one year — single-shot export.
+  await enqueueExport(range);
+} else if (v.reason === 'exceeds-one-year') {
+  // Fragment into monthly shards (18 shards for the range above).
+  const shards = splitIntoMonthlyShards(range);
+  for (const shard of shards) {
+    await enqueueExport(shard);
+  }
+  return { fragmented: true, count: shards.length };
+} else {
+  // v.reason === 'invalid-range' (since >= until) or other edge cases.
+  throw new Error(v.message);
+}
+```
+
+The 10-exports-per-tenant-per-day quota is enforced at the tRPC router layer, not
+here. `validateRange` only checks the temporal span.
+
+## Building a JSON envelope
+
+`buildEnvelope` assembles the signed JSON shape that ships in
+`compliance.exportJson` (sync path) or inside the async PDF body. The envelope
+carries the entity ID, display name, export range, and one row per activity-log
+entry. Per-row fields include the on-chain tx hash (if any), risk verdict, policy
+version, and `redactedFieldsBitmap` — the UI renders `[REDACTED]` for fields
+whose bit is set:
+
+```ts
+import { buildEnvelope } from '@glideco/compliance-export';
+
+const envelope = buildEnvelope({
+  entityId: 'entity_gbl_0bdf3c',
+  entityName: 'Glide Operator Co',
+  range: {
+    since: new Date('2026-01-01T00:00:00Z'),
+    until: new Date('2026-01-31T23:59:59Z'),
+  },
+  rows: dbRows.map((r) => ({
+    id: r.id,
+    createdAt: r.createdAt,
+    action: r.action,
+    riskVerdict: r.riskVerdict,
+    vendorUsed: r.vendorUsed,
+    onChainTx: r.onChainTx,
+    policyVersion: r.policyVersion,
+    redactedFieldsBitmap: r.redactedFieldsBitmap,
+  })),
+});
+
+return Response.json(envelope);
+```
+
+Both `ComplianceExportRowSchema` and `ComplianceExportEnvelopeSchema` are
+exported for callers that want to validate an envelope they received rather than
+build one.
+
+## Refreshing S3 signed URLs
+
+Signed URLs expire. When the operator's admin UI polls a long-running export job,
+the URL from the initial `PutObject` may already be stale. `refreshSignedUrl`
+handles the cache-and-refresh pattern: it re-signs only when the cached URL is
+absent or will expire within a configurable threshold (default: 5 minutes):
+
+```ts
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { refreshSignedUrl, type Signer } from '@glideco/compliance-export';
+
+const s3 = new S3Client({ region: 'us-east-1' });
+
+const signer: Signer = async ({ bucket, key, expiresInSeconds }) => {
+  const url = await getSignedUrl(
+    s3,
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
+    { expiresIn: expiresInSeconds },
+  );
+  return {
+    url,
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000),
+  };
+};
+
+// In the polling tRPC endpoint:
+const fresh = await refreshSignedUrl({
+  signer,
+  bucket: process.env.S3_EXPORTS_BUCKET!,
+  key: row.s3Key,
+  current: row.cachedUrl
+    ? { url: row.cachedUrl, expiresAt: row.cachedUrlExpiresAt }
+    : null,
+});
+
+await db
+  .update(complianceExports)
+  .set({ cachedUrl: fresh.url, cachedUrlExpiresAt: fresh.expiresAt })
+  .where(eq(complianceExports.id, row.id));
+```
+
+## Retention-tier storage adapters
+
+Activity log rows age through four tiers: hot (0–7d, Postgres), warm (7–90d,
+Postgres), cold (90–365d, S3), and regulatory (1–7y, S3 Deep Archive). The three
+concrete adapters all implement `RetentionStorage` so the sweep cron can swap
+storage class without changing the calling code:
+
+```ts
+import {
+  S3StandardStorage,
+  S3GlacierInstantStorage,
+  S3GlacierDeepStorage,
+} from '@glideco/compliance-export';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+} from '@aws-sdk/client-s3';
+
+const s3 = new S3Client({ region: 'eu-west-1' });
+const commands = {
+  put: (args) => new PutObjectCommand(args),
+  get: (args) => new GetObjectCommand(args),
+};
+
+// Cold tier — millisecond retrieval, lower cost than STANDARD.
+const cold = new S3GlacierInstantStorage({
+  client: s3,
+  commands,
+  bucket: 'glide-activity-logs',
+  keyPrefix: 'tenants/entity_gbl_0bdf3c',
+});
+
+const archived = await cold.archive({
+  rowId: 'row_a1b2c3',
+  body: JSON.stringify(logRow),
+  metadata: { entityId: 'entity_gbl_0bdf3c', exportShardId: 'shard_2026_01' },
+});
+// archived = { key: 'tenants/entity_gbl_0bdf3c/cold/row_a1b2c3.json', bytes: 412, ... }
+
+// Regulatory tier — minutes-to-hours retrieval; operator opts in per entity.
+const regulatory = new S3GlacierDeepStorage({
+  client: s3,
+  commands,
+  bucket: 'glide-activity-logs-regulatory',
+  keyPrefix: 'tenants/entity_gbl_0bdf3c',
+});
+```
+
+| Class                    | S3 tier           | Retrieval latency | Recommended for             |
+| ------------------------ | ----------------- | ----------------- | --------------------------- |
+| `S3StandardStorage`      | `STANDARD`        | milliseconds      | Cold tier without Glacier   |
+| `S3GlacierInstantStorage`| `GLACIER_IR`      | milliseconds      | Cold tier default (OSS plan)|
+| `S3GlacierDeepStorage`   | `DEEP_ARCHIVE`    | minutes–hours     | Regulatory tier (1–7y)      |
+
+## Quotas summary
+
+| Rule                            | Enforced by          |
+| ------------------------------- | -------------------- |
+| Max 10 exports per tenant/day   | tRPC router layer    |
+| Max 1 year per export range     | `validateRange`      |
+| Long-range fragmentation        | `splitIntoMonthlyShards` |
+
+## Reading list
+
+- [`@glideco/agent-events`](/docs/oss/packages/agent-events) — the event-type
+  schemas that populate the rows this package exports.
+- [`@glideco/dsar`](/docs/oss/packages/dsar) — sets `redactedFieldsBitmap`
+  on rows; the envelope builder surfaces those bits to the reviewer.
+- [Receipt schema](https://glide.co/schemas/agent-banking/v1/receipt.json) —
+  the on-chain receipt shape referenced in `onChainTx` envelope fields.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/compliance-export)

@@ -210,6 +210,159 @@ Paginated list of this agent's transactions. Scoped to the agent; sibling agents
 }
 ```
 
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "transactions.list",
+    "params": {
+      "limit": 25,
+      "since_iso": "2026-05-01T00:00:00Z",
+      "status_filter": "settled"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// Fetch the last 25 settled transactions since May 1
+const result = await client.call('transactions.list', {
+  limit: 25,
+  since_iso: '2026-05-01T00:00:00Z',
+  status_filter: 'settled',
+});
+
+// Page through if there are more
+if (result.next_cursor) {
+  const nextPage = await client.call('transactions.list', {
+    limit: 25,
+    cursor: result.next_cursor,
+  });
+}
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("transactions.list", {
+    "limit": 25,
+    "since_iso": "2026-05-01T00:00:00Z",
+    "status_filter": "settled",
+})
+
+# Page through if there are more
+if result["next_cursor"]:
+    next_page = client.call("transactions.list", {
+        "limit": 25,
+        "cursor": result["next_cursor"],
+    })
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Successful response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "transactions": [
+      {
+        "id": "e5f6a7b8-c9d0-1234-ef01-345678901234",
+        "tool_call_id": "f6a7b8c9-d0e1-2345-f012-456789012345",
+        "action": "payments.initiate",
+        "amount_cents": 150000,
+        "currency": "USDC",
+        "counterparty_address": "0x742d35Cc6634C0532925a3b8D4C9B7F3c2e1a4b",
+        "counterparty_chain": "base",
+        "on_chain_tx": "0xabc123def456789012345678901234567890123456789012345678901234567890",
+        "status": "settled",
+        "created_at": "2026-05-02T10:15:00Z",
+        "broadcasted_at": "2026-05-02T10:15:12Z"
+      },
+      {
+        "id": "a7b8c9d0-e1f2-3456-0123-567890123456",
+        "tool_call_id": "b8c9d0e1-f2a3-4567-1234-678901234567",
+        "action": "payments.initiate",
+        "amount_cents": 75000,
+        "currency": "USDC",
+        "counterparty_address": "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+        "counterparty_chain": "sol",
+        "on_chain_tx": "5KtXq2hVnP8wCpZr3mYfLqDsE9oAjRkWbN1vGhMuTyXcUi",
+        "status": "settled",
+        "created_at": "2026-05-03T14:22:00Z",
+        "broadcasted_at": "2026-05-03T14:22:04Z"
+      }
+    ],
+    "next_cursor": "eyJpZCI6ImE3YjhjOWQwIn0",
+    "fetched_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+Error — `limit` out of range:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "limit must be between 1 and 100",
+    "data": {
+      "reason_id": "limit_out_of_range"
+    }
+  }
+}
+```
+
+Error — missing or expired grant token:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "grant token missing or expired",
+    "data": {
+      "reason_id": "token_expired"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `limit` out of 1–100 range, invalid `status_filter` enum, or malformed `since_iso`/`until_iso` datetime | Validate against schema before call |
+| `-32000` | Unauthenticated | Missing `Authorization` header | Supply a valid `Bearer` token |
+| `-32001` | Unauthorized | Grant token expired or revoked | Refresh token via `agent.grant.refresh` |
+| `-32002` | Insufficient scope | Grant missing `accounts:read` scope | Issue new grant with `accounts:read` scope |
+| `-32603` | Internal error | Server-side error | Retry with backoff; contact support |
+
 ## Auth
 
-Caller's grant must include the `accounts:read` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `accounts:read` scope. Grants whose scope set is a superset of the required scope are accepted.

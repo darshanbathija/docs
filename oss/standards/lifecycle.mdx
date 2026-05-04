@@ -1,0 +1,221 @@
+---
+title: "Agent payment lifecycle"
+description: "Annotated flow tracing one agent payment from policy envelope to audit row. Shows the schema instance at each step."
+icon: 'arrow-progress'
+---
+
+This page traces the full lifecycle of a single agent-initiated payment: from the operator publishing a policy through to the audit row that proves it happened. Each arrow in the diagram below names the actor and the action; each step below the diagram shows the schema instance on the wire at that moment.
+
+## Sequence diagram
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant OAuthAS as OAuth AS (Ory Hydra)
+    participant Agent
+    participant MCPServer as MCP Server
+    participant PolicyEngine as @glideco/policy-engine
+    participant DB as Postgres
+
+    Operator->>DB: Publish AgentPolicyEnvelope (policy_version bumped)
+    Agent->>OAuthAS: client_credentials grant request<br/>(client_id, resource indicator, requested scope)
+    OAuthAS->>DB: Verify agent principal + check policy_version
+    OAuthAS-->>Agent: ScopedGrantClaims (signed JWT)
+    Agent->>MCPServer: MCP tool call<br/>(Bearer: <JWT>, toolName, params)
+    MCPServer->>MCPServer: @glideco/grant-wrapper validates JWT<br/>(sig, exp, aud, act.sub, policy_version F3+F5)
+    MCPServer->>PolicyEngine: evaluate(envelope, toolCall, grantClaims)
+    PolicyEngine-->>MCPServer: RiskVerdict (allow / allow_with_step_up / deny)
+    MCPServer->>DB: Settle tool call + write Receipt
+    DB->>DB: F4 trigger writes AgentActivityEvent<br/>to activity_log agent columns (append-only)
+    MCPServer-->>Agent: Receipt (JSON-RPC result)
+```
+
+## Step-by-step schema instances
+
+### Step 1 — operator publishes AgentPolicyEnvelope
+
+The operator configures which vaults an agent can touch, what amounts it can move, which chains and counterparties are allowed, and when the policy is active. Whenever any field changes, `policy_version` increments. All downstream grants and verifications key off this monotonic counter.
+
+```ts
+import { agentPolicyEnvelopeSchema } from '@glideco/schemas';
+
+const envelope = agentPolicyEnvelopeSchema.parse({
+  policy_id: '10000000-0000-4000-8000-000000000001',
+  vault_id:  '20000000-0000-4000-8000-000000000002',
+  policy_version: 7,
+
+  // Amount caps
+  amount_cap_cents_per_tx:  50_000,    // $500 per transaction
+  amount_cap_cents_per_day: 200_000,   // $2,000 per rolling 24h
+  step_up_amount_cents:     25_000,    // step-up required above $250
+
+  // non-empty allowlist closes the gate; empty allowlist (default) means no counterparty restriction
+  counterparty_allowlist: [
+    { address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', chain: 'base', token: 'USDC' },
+  ],
+
+  chain_allowlist:  ['base', 'eth'],
+  geo_allowlist:    ['US', 'GB', 'DE'],
+  mcc_allowlist:    [],
+  mcc_blocklist:    ['7995'],           // gambling blocked
+
+  created_at: '2026-05-01T00:00:00.000Z',
+  updated_at: '2026-05-04T09:00:00.000Z',
+});
+```
+
+### Step 2 — agent requests a grant from the OAuth AS
+
+The agent authenticates using `client_credentials` (server-to-server) or an authorization-code flow (user-delegated). It specifies the vault it wants to access via an RFC 8707 resource indicator and requests the minimum scope set needed.
+
+```
+POST https://auth.glide.co/oauth2/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=ap-agent-acme-prod
+&client_secret=<secret>
+&resource=https://api.glide.co/vaults/20000000-0000-4000-8000-000000000002
+&scope=payments:initiate+accounts:read
+```
+
+The AS verifies that `ap-agent-acme-prod` is a registered principal for this vault, reads the current `policy_version`, and signs the JWT.
+
+### Step 3 — OAuth AS issues ScopedGrantClaims (JWT)
+
+```ts
+import { grantClaimsSchema } from '@glideco/schemas';
+
+const claims = grantClaimsSchema.parse({
+  iss: 'https://auth.glide.co',
+  sub: '30000000-0000-4000-8000-000000000003',   // human principal
+  act: { sub: '40000000-0000-4000-8000-000000000004' },  // agent principal
+  azp: 'ap-agent-acme-prod',
+  aud: {
+    vault_id:  '20000000-0000-4000-8000-000000000002',
+    entity_id: '50000000-0000-4000-8000-000000000005',
+  },
+  scope: ['accounts:read', 'payments:initiate'],
+  policy_version: 7,
+  iat: 1746355200,
+  nbf: 1746355200,
+  exp: 1746358800,   // iat + 3600 (60-min cap)
+  jti: '60000000-0000-4000-8000-000000000006',
+});
+```
+
+The JWT is returned as an opaque Bearer token. The agent stores it in memory; it is never written to disk or logged.
+
+### Step 4 — agent makes an MCP tool call
+
+```
+POST https://mcp.glide.co/mcp
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "payments.initiate",
+    "arguments": {
+      "toAddress": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+      "chain": "base",
+      "token": "USDC",
+      "amountCents": 10000
+    }
+  },
+  "id": "call-01"
+}
+```
+
+### Step 5 — MCP server validates the grant
+
+`@glideco/grant-wrapper` runs seven checks in order (see [ScopedGrantClaims — Validation contract](/docs/oss/standards/scoped-grant-claims#validation-contract)) before the tool handler runs. If any check fails, the tool call returns JSON-RPC error `-32001` (auth failure) or `-32003` (step-up required) without touching the policy engine or the DB.
+
+### Step 6 — policy engine evaluates the envelope
+
+`@glideco/policy-engine` receives the current envelope (fetched fresh from DB and cached by `(vault_id, policy_version)`) plus the tool call parameters. It evaluates every configured axis in deterministic order and returns one of three verdicts:
+
+| Verdict | Meaning |
+| --- | --- |
+| `allow` | All caps satisfied; proceed. |
+| `allow_with_step_up` | Amount exceeds `step_up_amount_cents`; principal must complete biometric step-up before the tool can execute. The gateway returns JSON-RPC `-32003` with a `step_up_url`. |
+| `deny` | Hard cap exceeded, counterparty not on allowlist, geo blocked, or MCC blocked. Call rejected. |
+
+Denied calls do not produce a `Receipt` — only an `AgentActivityEvent` with `eventKind: 'risk_verdict'` and `eventKind: 'policy_violation'`.
+
+### Step 7 — receipt written after settlement
+
+```ts
+import { receiptSchema } from '@glideco/schemas';
+
+const receipt = receiptSchema.parse({
+  receipt_id:          '70000000-0000-4000-8000-000000000007',
+  principal_id:        '30000000-0000-4000-8000-000000000003',
+  agent_principal_id:  '40000000-0000-4000-8000-000000000004',
+  grant_id:            '60000000-0000-4000-8000-000000000006',
+  policy_version:      7,
+  tool_call_id:        '80000000-0000-4000-8000-000000000008',
+  idempotency_key:     'ap-agent-acme-prod:inv-2026-0504-001',
+  action:              'payments.initiate',
+  risk_verdict:        'allow',
+  rail:                'usdc-base',
+  vendor_used:         'bridge',
+  amount_cents:        10000,      // $100.00 — server-derived from chain RPC
+  currency:            'USDC',
+  counterparty_address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+  counterparty_chain:  'base',
+  counterparty_token:  'USDC',
+  on_chain_tx:         '0xabc123...', // fetched from chain RPC, never from facilitator body
+  timestamp:           '2026-05-04T12:01:23.456Z',
+});
+```
+
+The `receipt` is returned in the JSON-RPC result body and also persisted in `activity_log`.
+
+### Step 8 — F4 trigger writes AgentActivityEvent
+
+The Postgres trigger fires on the `activity_log` INSERT and writes an `AgentActivityEvent` projection — agent-activity rows live in `activity_log` via the agent-platform columns added by migration 0042. This is the F4 IRON RULE: no application code writes audit rows directly.
+
+```ts
+// The trigger produces this shape automatically — application code never constructs it.
+const event = {
+  schemaVersion: 'v1',
+  eventType:  'tool_call',
+  eventKind:  'tool_call',
+  eventId:    '90000000-0000-4000-8000-000000000009',
+  timestamp:  '2026-05-04T12:01:23.456Z',
+  agentId:    '40000000-0000-4000-8000-000000000004',
+  principalId:'30000000-0000-4000-8000-000000000003',
+  vaultId:    '20000000-0000-4000-8000-000000000002',
+  grantId:    '60000000-0000-4000-8000-000000000006',
+  toolCallId: '80000000-0000-4000-8000-000000000008',
+  summary:    'Settled $100.00 USDC via payments.initiate on base',
+  extra: {
+    risk_verdict: 'allow',
+    rail: 'usdc-base',
+    vendor_used: 'bridge',
+  },
+};
+```
+
+The Trust Console and `audit:stream` subscribers tail this table in real time.
+
+## Schema cross-reference
+
+| Schema | Where it lives in the flow |
+| --- | --- |
+| [`AgentPolicyEnvelope`](/docs/oss/standards/agent-policy-envelope) | Published by operator before the flow starts; `policy_version` threads through every subsequent schema. |
+| [`ScopedGrantClaims`](/docs/oss/standards/scoped-grant-claims) | JWT issued by OAuth AS at step 3; carried as Bearer token; re-validated at step 5. |
+| [`Grant`](/docs/oss/standards/grant) | Same wire format as `ScopedGrantClaims`; the developer-facing explanation of each JWT claim. |
+| [`Receipt`](/docs/oss/standards/receipt) | Written at step 7 after settlement; `on_chain_tx` is server-fetched, never from facilitator body. |
+| [`AgentActivityEvent`](/docs/oss/standards/agent-activity-event) | Written by Postgres trigger at step 8; append-only, no DELETE path. |
+| [`_types`](/docs/oss/standards/_types) | `uuidV4`, `amountCents`, `chainId`, `isoDateTimeUtc`, `agentScope`, etc. referenced by every schema above. |
+
+## Reading list
+
+- [OAuth flow](/docs/oss/headless/oauth-flow) — the `client_credentials` → JWT exchange in full detail.
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — the IRON RULES (F3, F4, F5) that each lifecycle step enforces.
+- [AgentPolicyEnvelope](/docs/oss/standards/agent-policy-envelope) — all 14 policy axes and their evaluation order.
+- [`@glideco/policy-engine`](https://www.npmjs.com/package/@glideco/policy-engine) — the open-source reference implementation of step 6.

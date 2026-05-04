@@ -1,0 +1,307 @@
+---
+title: "Agent pays vendor"
+description: "Full lifecycle recipe. Build an AgentPolicyEnvelope, issue a Grant, call payments.initiate, inspect the Receipt, and verify the audit stream. About 20 minutes."
+icon: "cart-shopping"
+---
+
+This recipe walks the full agent payment lifecycle end-to-end: define a policy envelope that caps spend per transaction and allowlists a vendor address, get a scoped grant from the OAuth authorization server, call `payments.initiate`, then query `audit.stream` to confirm the event landed. This is the canonical path every production agent should follow.
+
+Audience: agent authors who want to go beyond quickstart toy calls.
+
+## Prerequisites
+
+- The [axtior-neobank repo](https://github.com/darshanbathija/axtior-neobank) cloned locally with `pnpm install` run at the root.
+- `apps/mcp` running on `localhost:3001` (default port from `apps/mcp/src/server.ts`).
+- Node 22+ and pnpm.
+- A Glide OAuth client with `payments:initiate` and `audit:stream` scopes.
+
+## Steps
+
+### 1. Clone the example
+
+```bash
+cd axtior-neobank/examples/agent-pays-vendor
+pnpm install
+```
+
+### 2. Set environment variables
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# .env
+GLIDE_BASE_URL=http://localhost:3001
+GLIDE_GRANT_TOKEN=         # JWT from OAuth AS — see step 4
+GLIDE_VAULT_ID=            # UUID of the vault to gate
+GLIDE_ENTITY_ID=           # UUID of the entity the vault belongs to
+```
+
+### 3. Define the policy envelope (`src/0-policy.ts`)
+
+`AgentPolicyEnvelope` is the 14-axis object evaluated by `@glideco/policy-engine` on every
+agent tool call. All amount caps are integer **cents** (not dollar strings).
+
+```ts
+// src/0-policy.ts
+import { agentPolicyEnvelopeSchema } from '@glideco/schemas';
+
+const policyInput = {
+  policy_id: '01927fff-0000-7000-8000-000000000001',
+  vault_id: process.env['GLIDE_VAULT_ID']!,
+  policy_version: 1,
+
+  // Amount caps — all integers, USD cents
+  amount_cap_cents_per_tx: 50_000,    // $500
+  amount_cap_cents_per_day: 200_000,  // $2,000
+  step_up_amount_cents: 20_000,       // step-up required above $200
+
+  // Counterparty allowlist — (address, chain, token) triple required.
+  // Address-only is unsafe: the same hex string has different meaning
+  // on different chains (F1 sanctions-cache-chain-key rule).
+  counterparty_allowlist: [
+    {
+      address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+      chain: 'base',
+      token: 'USDC',
+    },
+  ],
+
+  chain_allowlist: ['base', 'ethereum'],
+  velocity_max_txs_per_hour: 10,
+
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+const result = agentPolicyEnvelopeSchema.safeParse(policyInput);
+if (!result.success) {
+  for (const issue of result.error.issues) {
+    console.error(`  ${issue.path.join('.')}: ${issue.message}`);
+  }
+  process.exit(1);
+}
+
+export const policy = result.data;
+```
+
+Key fields:
+- `policy_id` — stable UUID across version bumps; `(vault_id, policy_id)` is unique.
+- `policy_version` — monotonic counter; cache invalidation key for the policy engine.
+- `amount_cap_cents_*` — absent means no cap on that axis; the engine still evaluates other gates.
+- `counterparty_allowlist` — non-empty array closes the gate (only listed counterparties allowed); empty array (or omitted) means no counterparty restriction. Match the source semantics in `policy-engine/src/evaluate.ts`.
+
+### 4. Issue a scoped grant (`src/1-grant.ts`)
+
+In production, your agent runtime calls the OAuth AS with `client_credentials` to get a
+JWT. The mock below shows the shape the AS issues.
+
+```ts
+// src/1-grant.ts
+import { grantClaimsSchema } from '@glideco/schemas';
+
+const now = Math.floor(Date.now() / 1000);
+
+// In production — exchange client credentials for a real JWT:
+//
+//   curl -s -X POST https://ory.glide.co/oauth2/token \
+//     -u "$GLIDE_OAUTH_CLIENT_ID:$GLIDE_OAUTH_CLIENT_SECRET" \
+//     -d grant_type=client_credentials \
+//     -d "scope=payments:initiate audit:stream" \
+//     | jq -r .access_token
+
+const mockClaims = {
+  iss: 'https://ory.glide.co',
+  sub: 'user-demo-00000000-0000-0000-0000-000000000001',
+  act: { sub: 'agent-demo-00000000-0000-0000-0000-000000000001' },
+  azp: 'claude-desktop',
+  aud: {
+    vault_id: process.env['GLIDE_VAULT_ID']!,
+    entity_id: process.env['GLIDE_ENTITY_ID']!,
+  },
+  scope: ['payments:initiate', 'audit:stream'] as const,
+  policy_version: 1,
+  iat: now,
+  nbf: now,
+  exp: now + 3600,  // 60-minute cap — MAX_GRANT_TTL_SECONDS
+  jti: '01927fff-0000-7000-8000-000000000002',
+};
+
+const result = grantClaimsSchema.safeParse(mockClaims);
+if (!result.success) {
+  for (const issue of result.error.issues) {
+    console.error(`  ${issue.path.join('.')}: ${issue.message}`);
+  }
+  process.exit(1);
+}
+
+export const mockGrantClaims = result.data;
+```
+
+Grant fields:
+- `sub` + `act.sub` — human principal and the agent acting on their behalf (RFC 8693 actor claim).
+- `aud.vault_id` + `aud.entity_id` — both required; the gateway checks tenant isolation on every call.
+- `policy_version` — pinned at issuance; the verifier re-checks against the live policy on each call.
+- Max TTL is **3600 seconds** (enforced by `grantClaimsValidatedSchema`).
+
+### 5. Call `payments.initiate` and inspect the Receipt (`src/2-pay.ts`)
+
+The MCP gateway runs on three category-scoped endpoints. Write tools live on `/mcp/write`.
+
+```ts
+// src/2-pay.ts
+import { receiptSchema } from '@glideco/schemas';
+
+const token = process.env['GLIDE_GRANT_TOKEN']!;
+const baseUrl = process.env['GLIDE_BASE_URL'] ?? 'https://api.glide.co';
+
+const res = await fetch(`${baseUrl}/mcp/write`, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: crypto.randomUUID(),
+    method: 'tools/call',
+    params: {
+      name: 'payments.initiate',
+      arguments: {
+        counterparty: {
+          address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+          chain: 'base',
+          token: 'USDC',
+        },
+        amount_cents: 5_000,    // $50 — below step_up_amount_cents ($200)
+        currency: 'USDC',
+        idempotency_key: 'vendor-pay-invoice-042',
+        memo: 'invoice 042',
+      },
+    },
+  }),
+});
+
+const body = await res.json();
+// payments.initiate returns kind: 'accepted' | 'pending_step_up' (see paymentsInitiateOutput).
+// On 'accepted', the gateway has enqueued the payment; the Receipt is written
+// to activity_log when the connector settles. Poll audit.stream to observe it.
+const result = body.result;
+if (result.kind === 'pending_step_up') {
+  console.log('step_up_url:', result.step_up_url);
+  // Open the URL in the user's browser; retry the call with the same
+  // idempotency_key after the user completes the Privy biometric step-up.
+  process.exit(0);
+}
+console.log('pending_payment_id:', result.pending_payment_id);
+console.log('policy_version:', result.policy_version);
+console.log('risk_verdict:', result.risk_verdict);
+console.log('enqueued_at:', result.enqueued_at);
+```
+
+Output fields (from `paymentsInitiateOutput`):
+- `kind` — `accepted` (enqueued) or `pending_step_up` (caller must complete biometric step-up first).
+- `pending_payment_id` — UUID of the row in `agent_pending_payments`. Correlate with `audit.stream` events as they arrive.
+- `policy_version` — pinned at evaluate time; the live policy may have advanced by settle time.
+- `risk_verdict` — `allow` or `allow_with_step_up`. Deny verdicts come back as JSON-RPC errors, not as outputs.
+- `enqueued_at` — when the gateway accepted the call.
+
+Once the connector settles, a `Receipt` row lands in `activity_log` and an `AgentActivityEvent` is emitted to the SSE audit stream. The fields you'll read off the receipt:
+- `receipt_id` — primary key; use this to correlate against `audit.stream` events.
+- `on_chain_tx` — server-fetched from chain RPC, never from a facilitator response body (F1).
+- `risk_verdict` — `allow | allow_with_step_up`. Denied calls do not produce receipts.
+- `vendor_used` — connector slug that settled the tx (matches `ConnectorManifest.slug`).
+
+If `payments.initiate` returns JSON-RPC error code `-32003` with `step_up_url`,
+open that URL in the user's browser, wait for Privy WebAuthn to complete,
+then retry the call with the same `idempotency_key`.
+
+### 6. Subscribe to the audit stream (`src/3-audit.ts`)
+
+Read tools live on `/mcp/read`. `audit.stream` returns an `sse_url` and `cursor` — connect to the URL with `EventSource` (or any SSE client) to receive `AgentActivityEvent` rows as they're written.
+
+```ts
+// src/3-audit.ts
+const res = await fetch(`${baseUrl}/mcp/read`, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: crypto.randomUUID(),
+    method: 'tools/call',
+    params: {
+      name: 'audit.stream',
+      arguments: {
+        // Optional. Resume from this ISO-8601 instant; omit to start from
+        // the moment the cursor was minted.
+        from_iso: new Date(Date.now() - 60_000).toISOString(),
+      },
+    },
+  }),
+});
+
+const { sse_url, cursor, expires_at, heartbeat_seconds } = (await res.json()).result;
+console.log('sse_url:', sse_url);
+console.log('cursor expires:', expires_at);
+
+// Subscribe via standard EventSource — the SSE endpoint streams
+// AgentActivityEvent rows scoped to this agent + grant.
+const events = new EventSource(sse_url);
+events.addEventListener('message', (raw) => {
+  const event = JSON.parse(raw.data);
+  // Filter for the payment we just made.
+  if (event.event_kind !== 'tool_call_settled') return;
+  if (event.pending_payment_id !== result.pending_payment_id) return;
+  console.log('settled:', event.receipt_id, event.tool_call, event.risk_verdict);
+  events.close();
+});
+```
+
+## Run it
+
+```bash
+GLIDE_VAULT_ID=<your-vault-id> \
+GLIDE_ENTITY_ID=<your-entity-id> \
+GLIDE_GRANT_TOKEN=<oauth-jwt> \
+npx tsx src/0-policy.ts
+npx tsx src/2-pay.ts
+npx tsx src/3-audit.ts
+```
+
+Expected output:
+
+```
+[0] policy envelope valid.
+    policy_id=01927fff-0000-7000-8000-000000000001
+    amount_cap_cents_per_tx=50000 ($500)
+    step_up_amount_cents=20000 ($200)
+[2] payment initiated.
+    receipt_id=01927fff-0000-7000-8000-000000000003
+    rail=usdc-base  amount=$50  risk_verdict=allow
+[3] audit event found.
+    tool_call=payments.initiate  risk_verdict=allow
+sequence complete.
+```
+
+## Extend it
+
+- Set `amount_cents` above `step_up_amount_cents` to trigger the step-up path — `payments.initiate` returns `kind: 'pending_step_up'` with a `step_up_url` to open in the browser.
+- Add a second counterparty address NOT in `counterparty_allowlist` and confirm the policy engine rejects it.
+- Reduce `velocity_max_txs_per_hour` to 1 and submit two calls in the same minute to hit the velocity gate.
+- Bump `policy_version` without updating `amount_cap_cents_per_tx` — the grant's pinned `policy_version` will no longer match and calls will fail with `PolicyStaleError`.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/agent-pays-vendor](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/agent-pays-vendor)
+
+## Reading list
+
+- [AgentPolicyEnvelope schema](/oss/standards/agent-policy-envelope) — all 14 axes and validation rules.
+- [Grant schema](/oss/standards/grant) — JWT claims shape, `act` claim, TTL cap.
+- [Receipt schema](/oss/standards/receipt) — every field returned by write tools.
+- [MCP gateway](/oss/headless/mcp-gateway) — `/mcp/read`, `/mcp/write`, `/mcp/treasury` endpoint contracts.
+- [Lifecycle](/oss/standards/lifecycle) — state machine from policy creation to grant expiry.

@@ -1,6 +1,6 @@
 ---
 title: "agent.grant.issue"
-description: "Issue a new bearer grant for this agent with a narrowed scope set. Always requires principal step-up — the first call returns a step-up URL; the second call (wi"
+description: "Issue a new bearer grant for this agent with a narrowed scope set; always requires principal step-up before the token is returned."
 icon: "shield-halved"
 ---
 
@@ -46,7 +46,9 @@ Issue a new bearer grant for this agent with a narrowed scope set. Always requir
           "cards:manage",
           "agent:budget:create",
           "agent:budget:revoke",
+          "beneficiary:read",
           "beneficiary:write",
+          "kyc:start",
           "x402:pay",
           "x402:receive",
           "audit:stream",
@@ -106,7 +108,9 @@ Issue a new bearer grant for this agent with a narrowed scope set. Always requir
           "cards:manage",
           "agent:budget:create",
           "agent:budget:revoke",
+          "beneficiary:read",
           "beneficiary:write",
+          "kyc:start",
           "x402:pay",
           "x402:receive",
           "audit:stream",
@@ -132,6 +136,213 @@ Issue a new bearer grant for this agent with a narrowed scope set. Always requir
 }
 ```
 
+## Request examples
+
+This tool always requires a two-call pattern. The first call (without `step_up_sigil`) returns `-32003` with a `step_up_url`. After the principal completes biometric approval, the second call supplies the redeemed `step_up_sigil` and receives the new grant.
+
+<CodeGroup>
+
+```bash curl
+# Step 1 — trigger step-up (no sigil)
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "agent.grant.issue",
+    "params": {
+      "scope": ["accounts:read", "payments:initiate"],
+      "ttl_seconds": 3600
+    }
+  }'
+
+# → error -32003 with step_up_url + sigil in data
+# Redirect principal to step_up_url, collect the redeemed sigil
+
+# Step 2 — supply redeemed sigil
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "agent.grant.issue",
+    "params": {
+      "scope": ["accounts:read", "payments:initiate"],
+      "ttl_seconds": 3600,
+      "step_up_sigil": "su_01HWXYZ_abc123def456"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// Step 1 — initiate step-up
+let stepUpUrl: string;
+let sigil: string;
+
+try {
+  await client.call('agent.grant.issue', {
+    scope: ['accounts:read', 'payments:initiate'],
+    ttl_seconds: 3600,
+  });
+} catch (err: any) {
+  if (err.code === -32003) {
+    // Redirect the principal to complete biometric approval
+    stepUpUrl = err.data.step_up_url;
+    console.log(`Redirect principal to: ${stepUpUrl}`);
+    // ... wait for principal to complete step-up and return sigil ...
+    sigil = await waitForSigil(stepUpUrl);
+  } else {
+    throw err;
+  }
+}
+
+// Step 2 — supply redeemed sigil
+const grant = await client.call('agent.grant.issue', {
+  scope: ['accounts:read', 'payments:initiate'],
+  ttl_seconds: 3600,
+  step_up_sigil: sigil,
+});
+
+console.log(`New grant: ${grant.grant_id}, expires: ${grant.expires_at}`);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+# Step 1 — initiate step-up
+try:
+    client.call("agent.grant.issue", {
+        "scope": ["accounts:read", "payments:initiate"],
+        "ttl_seconds": 3600,
+    })
+except client.McpError as err:
+    if err.code == -32003:
+        # Redirect the principal to complete biometric approval
+        step_up_url = err.data["step_up_url"]
+        print(f"Redirect principal to: {step_up_url}")
+        # ... wait for principal to complete step-up and return sigil ...
+        sigil = wait_for_sigil(step_up_url)
+    else:
+        raise
+
+# Step 2 — supply redeemed sigil
+grant = client.call("agent.grant.issue", {
+    "scope": ["accounts:read", "payments:initiate"],
+    "ttl_seconds": 3600,
+    "step_up_sigil": sigil,
+})
+
+print(f"New grant: {grant['grant_id']}, expires: {grant['expires_at']}")
+```
+
+</CodeGroup>
+
+## Response examples
+
+Step 1 — step-up required (first call without sigil always returns this):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32003,
+    "message": "issuing a new grant requires principal biometric approval",
+    "data": {
+      "reason_id": "step_up_required",
+      "step_up_url": "https://app.glide.co/step-up?token=eyJhbGciOiJIUzI1NiJ9.eyJyZWFzb24iOiJncmFudF9pc3N1ZSJ9.sig"
+    }
+  }
+}
+```
+
+Step 2 — successful grant issuance (with valid sigil):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "grant_id": "f7a8b9c0-d1e2-3456-f012-456789012345",
+    "bearer_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkNGU1ZjZhNyIsInNjb3BlIjpbImFjY291bnRzOnJlYWQiLCJwYXltZW50czppbml0aWF0ZSJdfQ.signature",
+    "expires_at": "2026-05-04T13:00:00Z",
+    "scope": ["accounts:read", "payments:initiate"],
+    "policy_version": 3
+  }
+}
+```
+
+Error — attempted scope escalation (requesting scope not in current grant):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "requested scope 'treasury:yield-allocate' not in current grant; cannot self-escalate",
+    "data": {
+      "reason_id": "scope_escalation"
+    }
+  }
+}
+```
+
+Error — sigil already redeemed or expired:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "error": {
+    "code": -32602,
+    "message": "step-up sigil was not valid, already redeemed, expired, or minted for a different reason",
+    "data": {
+      "reason_id": "step_up_sigil_invalid"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | Requested scope not present in current grant (scope escalation); `ttl_seconds` exceeds 3600; invalid sigil | Validate params; use step-up to acquire broader scope if needed |
+| `-32000` | Unauthenticated | Missing `Authorization` header | Supply a valid `Bearer` token |
+| `-32001` | Unauthorized | Grant token expired or revoked | Refresh token via `agent.grant.refresh` |
+| `-32002` | Insufficient scope | Grant missing `agent:budget:create` scope | Issue new grant with `agent:budget:create` scope |
+| `-32003` | Step-up required | First call without `step_up_sigil`; payload includes `step_up_url` | Redirect principal to `step_up_url`, then retry with the returned sigil |
+| `-32603` | Internal error | Server-side error | Retry with backoff; contact support |
+
+## Step-up flow
+
+`agent.grant.issue` unconditionally requires principal biometric approval. Every call without a valid `step_up_sigil` returns `-32003`. Here is the full two-call sequence:
+
+**Call 1 — trigger step-up**
+
+Send the request without `step_up_sigil`. The server mints a step-up session and returns `-32003` with `data.step_up_url`.
+
+**Redirect principal**
+
+Open or redirect the principal's browser to `step_up_url`. Glide's step-up sheet prompts the principal to approve the scope + TTL using their registered Privy passkey or biometric. On approval the sheet redirects back to your `redirect_uri` with a `sigil` query parameter.
+
+**Call 2 — supply the redeemed sigil**
+
+Repeat the exact same call (same `scope`, same `ttl_seconds`) and include `step_up_sigil` from the redirect callback. The sigil is single-use; replaying it, or using a sigil minted for a different reason (e.g., `rotate_signer`), returns `-32602 step_up_sigil_invalid`.
+
+For more detail on the step-up redirect flow, session lifecycle, and sigil expiry, see [Step-up authentication](/docs/agents/step-up).
+
 ## Auth
 
-Caller's grant must include the `agent:budget:create` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `agent:budget:create` scope. Grants whose scope set is a superset of the required scope are accepted.

@@ -5,7 +5,7 @@ description: "JSON Schema documents for Glide's agent-banking standards. Promote
 icon: 'code'
 ---
 
-Glide ships nine JSON Schema documents at the public standards URL [`glide.co/schemas/agent-banking/v1/`](https://glide.co/schemas/agent-banking/v1/). Each schema is generated from the corresponding Zod schema in `@glideco/schemas` (or `@repo/connectors-base` / `@glideco/skills-base`) and hand-curated for partner readability.
+Glide ships nine JSON Schema documents at the public standards URL [`glide.co/schemas/agent-banking/v1/`](https://glide.co/schemas/agent-banking/v1/). Each schema is generated from the corresponding Zod schema in `@glideco/schemas` (or `@repo/connectors-base` / `@glideco/skills-base`) and hand-curated for partner readability. The companion [Lifecycle](/docs/oss/standards/lifecycle) page traces one agent payment through every schema in the set, with a Mermaid sequence diagram and per-step instances.
 
 <Note>
   **Promoted to `/v1/` on 2026-04-26.** The schemas were locked after an independent Opus adversarial review hunted for design mistakes across 10 axes × 8 schemas (no individual cell scored below 9/10). The full delta + score matrix is committed in the release PR. The `/draft/` paths remain reachable as a deprecated alias for any consumer that pinned a `/draft/` URL — they mirror `/v1/` exactly and will not receive new features.
@@ -18,7 +18,7 @@ Glide ships nine JSON Schema documents at the public standards URL [`glide.co/sc
     The OSS connector manifest. Every package at `packages/connectors/<slug>/` ships one.
   </Card>
   <Card title="AgentPolicyEnvelope" icon="shield" href="/docs/oss/standards/agent-policy-envelope">
-    The 13-axis policy envelope evaluated by `@glideco/policy-engine` on every agent tool call.
+    The 14-axis policy envelope evaluated by `@glideco/policy-engine` on every agent tool call.
   </Card>
   <Card title="SkillManifest" icon="hat-wizard" href="/docs/oss/standards/skill-manifest">
     The OSS agent-skill manifest. Every package at `packages/skills/<id>/` ships one.
@@ -34,10 +34,11 @@ Glide ships nine JSON Schema documents at the public standards URL [`glide.co/sc
   </Card>
 </CardGroup>
 
-Plus two supporting schemas:
+Plus three supporting schemas:
 
-- **`AgentActivityEvent`** — Trust Console event taxonomy. Closed `eventKind` enum + open `extra` bag for kind-specific fields. [`/v1/agent-activity-event.json`](https://glide.co/schemas/agent-banking/v1/agent-activity-event.json)
-- **`_types.json`** — Shared `$defs` (`uuidV4`, `isoDateTimeUtc`, `chainId`, `currencyCode`, `agentScope`, `riskVerdict`, `trustTier`, etc.) referenced via `$ref` by every other schema. [`/v1/_types.json`](https://glide.co/schemas/agent-banking/v1/_types.json)
+- **`AgentActivityEvent`** — Trust Console event taxonomy. Closed `eventKind` enum + open `extra` bag for kind-specific fields. Walkthrough at [`/docs/oss/standards/agent-activity-event`](/docs/oss/standards/agent-activity-event); raw schema at [`/v1/agent-activity-event.json`](https://glide.co/schemas/agent-banking/v1/agent-activity-event.json).
+- **`ScopedGrantClaims`** — JWT claims emitted by the OAuth AS. RFC 8707 resource-indicator-bound; tighter than the application-level `Grant`. Walkthrough at [`/docs/oss/standards/scoped-grant-claims`](/docs/oss/standards/scoped-grant-claims); raw schema at [`/v1/scoped-grant-claims.json`](https://glide.co/schemas/agent-banking/v1/scoped-grant-claims.json).
+- **`_types.json`** — Shared `$defs` (`uuidV4`, `isoDateTimeUtc`, `chainId`, `currencyCode`, `agentScope`, `riskVerdict`, `trustTier`, etc.) referenced via `$ref` by every other schema. Walkthrough at [`/docs/oss/standards/_types`](/docs/oss/standards/_types); raw schema at [`/v1/_types.json`](https://glide.co/schemas/agent-banking/v1/_types.json).
 
 ## Versioning contract
 
