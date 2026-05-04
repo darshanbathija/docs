@@ -1,0 +1,186 @@
+---
+title: "curl quickstart"
+description: "Bare HTTP, no SDK. Five minutes to your first signed call and a parsed receipt in stdout."
+icon: "terminal"
+---
+
+No SDK, no build step. This recipe uses `curl` and `jq` to call the Glide MCP gateway directly. You will authenticate with an HMAC-signed JWT, call `payments.initiate`, and inspect the returned receipt. Audience: backend engineers evaluating Glide before committing to an SDK.
+
+## Prerequisites
+
+- `curl` and `jq` installed (`brew install jq` on macOS).
+- Glide running locally per the [main quickstart](/oss/quickstart), or access to a hosted Glide instance.
+- A dev secret: `MCP_TOKEN_VERIFIER_DEV_SECRET` set in your environment (32-byte hex string).
+
+<Note>
+  If you haven't set a dev secret yet, generate one now:
+
+  ```bash
+  echo "MCP_TOKEN_VERIFIER_DEV_SECRET=$(openssl rand -hex 32)" >> apps/web/.env.local
+  export MCP_TOKEN_VERIFIER_DEV_SECRET=$(grep MCP_TOKEN_VERIFIER_DEV_SECRET apps/web/.env.local | cut -d= -f2)
+  ```
+</Note>
+
+## Steps
+
+### 1. Set environment variables
+
+```bash
+export GLIDE_MCP_URL="http://localhost:8787"
+export GLIDE_DEV_SECRET="$MCP_TOKEN_VERIFIER_DEV_SECRET"
+export GLIDE_AGENT_ID="agent_curl_demo"
+export GLIDE_ACCOUNT_ID="acc_demo_01"
+```
+
+### 2. Mint a short-lived dev JWT
+
+The dev verifier accepts HMAC-SHA256 JWTs signed with the shared secret. Use the `glide` CLI to mint one:
+
+```bash
+export GLIDE_TOKEN=$(pnpm glide token:mint \
+  --secret "$GLIDE_DEV_SECRET" \
+  --sub "agent_curl_demo" \
+  --aud "glide-mcp" \
+  --ttl 300)
+
+echo $GLIDE_TOKEN
+# → eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+<Note>
+  In production, tokens come from your Ory Hydra deployment via
+  `client_credentials`. See the [OAuth flow](/oss/headless/oauth-flow) for the
+  full RFC 7591 walk-through.
+</Note>
+
+### 3. Verify the gateway is reachable
+
+```bash
+curl -s "$GLIDE_MCP_URL/healthz" | jq .
+```
+
+Expected output:
+
+```json
+{
+  "status": "ok",
+  "uptime": 142
+}
+```
+
+### 4. Inspect available tools
+
+```bash
+curl -s -X POST "$GLIDE_MCP_URL/mcp/read" \
+  -H "Authorization: Bearer $GLIDE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  | jq '.result.tools[].name'
+```
+
+Expected output (abbreviated):
+
+```
+"accounts.list"
+"accounts.balance"
+"audit.stream"
+"transactions.list"
+```
+
+### 5. Check an account balance
+
+```bash
+curl -s -X POST "$GLIDE_MCP_URL/mcp/read" \
+  -H "Authorization: Bearer $GLIDE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 2,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"accounts.balance\",
+      \"arguments\": {
+        \"accountId\": \"$GLIDE_ACCOUNT_ID\"
+      }
+    }
+  }" | jq '.result'
+```
+
+### 6. Initiate a payment
+
+```bash
+curl -s -X POST "$GLIDE_MCP_URL/mcp/write" \
+  -H "Authorization: Bearer $GLIDE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 3,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"payments.initiate\",
+      \"arguments\": {
+        \"fromAccountId\": \"$GLIDE_ACCOUNT_ID\",
+        \"toAddress\": \"0x742d35Cc6634C0532925a3b8D4C9C5E9F2b4D6A1\",
+        \"amountUsdc\": \"12.50\",
+        \"memo\": \"Invoice INV-2026-042\",
+        \"idempotencyKey\": \"curl-demo-$(date +%s)\"
+      }
+    }
+  }" | jq '.result'
+```
+
+### 7. Parse the receipt
+
+A successful call returns a `Receipt` object:
+
+```json
+{
+  "receiptId": "rcpt_01hwzk4n3mbt6c9a5vzd7qp2xr",
+  "status": "completed",
+  "amountUsdc": "12.50",
+  "toAddress": "0x742d35Cc6634C0532925a3b8D4C9C5E9F2b4D6A1",
+  "txHash": "0xabc...def",
+  "chain": "base",
+  "timestamp": "2026-05-04T11:23:01.482Z",
+  "agentId": "agent_curl_demo",
+  "policyEnvelopeId": "env_01hwzk4m9kbt6c9a5vzd7qp2xy"
+}
+```
+
+The `txHash` field is the on-chain transaction hash. You can verify it independently at `basescan.org/tx/<txHash>`.
+
+## Run it
+
+The full sequence above as a single script:
+
+```bash
+bash examples/curl-quickstart/run.sh
+```
+
+Expected stdout:
+
+```
+[1/4] gateway health ... ok
+[2/4] tool catalog ... 22 tools available
+[3/4] account balance ... $1,000.00 USDC
+[4/4] payment initiate ... rcpt_01hwzk4n3mbt6c9a5vzd7qp2xr status=completed
+```
+
+## Extend it
+
+- Add `--header "Idempotency-Key: ..."` to make the payment call safe to retry.
+- Pipe the `receiptId` into `audit.stream` to watch event delivery in real time.
+- Replace the HMAC dev token with a production Ory JWT — no other change needed.
+- Wire the receipt into a Slack webhook for payment confirmation alerts.
+- Try a call that should fail policy (amount above cap) and inspect the `-32003` error body.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/curl-quickstart](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/curl-quickstart)
+
+## Reading list
+
+- [OAuth flow](/oss/headless/oauth-flow) — production JWT issuance via Ory Hydra.
+- [Receipt schema](/oss/standards/receipt) — every field in the receipt object.
+- [Tool reference](/oss/headless/tool-reference) — full input/output schemas for all 22 tools.
+- [Money-safety contracts](/oss/concepts/money-safety-contracts) — the F-rules every payment path enforces.

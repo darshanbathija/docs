@@ -1,0 +1,262 @@
+---
+title: "Build a skill"
+description: "Scaffold a SkillManifest, write a policy template, implement a consent flow, write the skill entry point, and run a smoke test. About 30 minutes."
+icon: "robot"
+---
+
+This recipe builds `spend-export` from scratch — a skill that lets an agent pull a structured CSV of spend data for a given account and date range. The skill follows the same scaffold used by every package in the OSS Cathedral. Audience: contributors who want to author and publish a new `@glideco/*` skill.
+
+## Prerequisites
+
+- The [axtior-neobank repo](https://github.com/darshanbathija/axtior-neobank) cloned locally with `pnpm install` run at root.
+- Node 22+ and pnpm.
+- Familiarity with the [SkillManifest schema](/oss/standards/skill-manifest) and [AgentPolicyEnvelope schema](/oss/standards/agent-policy-envelope).
+
+## Steps
+
+### 1. Scaffold the skill package
+
+```bash
+pnpm glide skill:new --slug spend-export
+```
+
+This creates `packages/skills/spend-export/` with:
+
+```
+packages/skills/spend-export/
+  src/
+    index.ts          # skill entry point
+    manifest.ts       # SkillManifest definition
+    policy.ts         # default policy template
+    consent.ts        # consent flow descriptor
+    schema.ts         # input/output zod schemas
+  tests/
+    smoke.test.ts
+  package.json
+  tsconfig.json
+```
+
+### 2. Write the SkillManifest
+
+```ts
+// src/manifest.ts
+import type { SkillManifest } from '@glideco/schemas';
+
+export const manifest: SkillManifest = {
+  schemaVersion: '1.0.0',
+  skillId: 'spend-export',
+  displayName: 'Spend Export',
+  description: 'Exports a structured CSV of account spend for a given date range.',
+  version: '0.1.0',
+  author: 'Glide Contributors',
+  license: 'MIT',
+  requiredScopes: ['transactions.list', 'accounts.balance'],
+  outputFormats: ['csv', 'json'],
+  consentRequired: true,
+  sandboxSupported: true,
+  docsUrl: 'https://github.com/darshanbathija/axtior-neobank/tree/main/examples/build-a-skill-spend-export',
+};
+```
+
+Validate:
+
+```bash
+pnpm glide skill:validate packages/skills/spend-export
+```
+
+### 3. Define input/output schemas
+
+```ts
+// src/schema.ts
+import { z } from 'zod';
+
+export const SpendExportInput = z.object({
+  accountId: z.string(),
+  from: z.string().datetime({ offset: true }),
+  to: z.string().datetime({ offset: true }),
+  format: z.enum(['csv', 'json']).default('csv'),
+});
+
+export const SpendExportOutput = z.object({
+  rowCount: z.number(),
+  totalUsdc: z.string(),
+  exportUrl: z.string().url(),
+  expiresAt: z.string().datetime({ offset: true }),
+});
+
+export type SpendExportInput = z.infer<typeof SpendExportInput>;
+export type SpendExportOutput = z.infer<typeof SpendExportOutput>;
+```
+
+### 4. Write the policy template
+
+The policy template is the minimum `AgentPolicyEnvelope` a principal must grant before this skill can execute. It is advisory — the gateway always checks the actual live envelope at call time.
+
+```ts
+// src/policy.ts
+import type { AgentPolicyEnvelope } from '@glideco/schemas';
+
+export function policyTemplate(accountId: string): Partial<AgentPolicyEnvelope> {
+  return {
+    grantedSkills: ['spend-export'],
+    dataScopes: ['transactions.list', 'accounts.balance'],
+    spendControls: {
+      perTransactionCapUsdc: '0.00', // read-only skill — no spend
+    },
+    accountIds: [accountId],
+  };
+}
+```
+
+### 5. Write the consent flow descriptor
+
+```ts
+// src/consent.ts
+import type { ConsentFlow } from '@glideco/schemas';
+
+export const consentFlow: ConsentFlow = {
+  version: '1.0',
+  prompts: [
+    {
+      id: 'scope-acknowledge',
+      type: 'checkbox',
+      label: 'Allow this skill to read your transaction history for the selected date range.',
+      required: true,
+    },
+    {
+      id: 'data-retention',
+      type: 'select',
+      label: 'How long should the export URL stay valid?',
+      options: [
+        { value: '1h', label: '1 hour' },
+        { value: '24h', label: '24 hours' },
+        { value: '7d', label: '7 days' },
+      ],
+      default: '24h',
+    },
+  ],
+};
+```
+
+### 6. Write the skill entry point
+
+```ts
+// src/index.ts
+import { SpendExportInput, SpendExportOutput } from './schema';
+import type { SkillContext } from '@glideco/schemas';
+
+export { manifest } from './manifest';
+export { consentFlow } from './consent';
+export { policyTemplate } from './policy';
+
+export async function run(
+  input: SpendExportInput,
+  ctx: SkillContext,
+): Promise<SpendExportOutput> {
+  const validated = SpendExportInput.parse(input);
+
+  // Use ctx.rpc to call the MCP read endpoint — ctx handles auth + token refresh.
+  const txList = await ctx.rpc<{ transactions: Transaction[] }>('read', 'transactions.list', {
+    accountId: validated.accountId,
+    from: validated.from,
+    to: validated.to,
+    limit: 10_000,
+  });
+
+  const totalUsdc = txList.transactions
+    .reduce((sum, tx) => sum + parseFloat(tx.amountUsdc), 0)
+    .toFixed(2);
+
+  const exportUrl = await ctx.storage.uploadCsv(
+    `spend-export-${validated.accountId}-${Date.now()}.csv`,
+    txList.transactions,
+    { ttl: ctx.consentAnswers['data-retention'] ?? '24h' },
+  );
+
+  return SpendExportOutput.parse({
+    rowCount: txList.transactions.length,
+    totalUsdc,
+    exportUrl,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  });
+}
+```
+
+### 7. Write the smoke test
+
+```ts
+// tests/smoke.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import { run } from '../src/index';
+import type { SkillContext } from '@glideco/schemas';
+
+const mockCtx: SkillContext = {
+  rpc: vi.fn().mockResolvedValue({
+    transactions: [
+      { txId: 'tx_001', amountUsdc: '50.00', timestamp: '2026-05-01T10:00:00Z' },
+      { txId: 'tx_002', amountUsdc: '120.00', timestamp: '2026-05-02T14:30:00Z' },
+    ],
+  }),
+  storage: {
+    uploadCsv: vi.fn().mockResolvedValue('https://storage.glide.co/exports/demo.csv'),
+  },
+  consentAnswers: { 'data-retention': '24h' },
+};
+
+describe('spend-export smoke', () => {
+  it('returns correct row count and total', async () => {
+    const result = await run(
+      {
+        accountId: 'acc_demo_01',
+        from: '2026-05-01T00:00:00Z',
+        to: '2026-05-03T00:00:00Z',
+        format: 'csv',
+      },
+      mockCtx,
+    );
+    expect(result.rowCount).toBe(2);
+    expect(result.totalUsdc).toBe('170.00');
+    expect(result.exportUrl).toMatch(/^https:\/\//);
+  });
+});
+```
+
+Run:
+
+```bash
+pnpm --filter spend-export test
+```
+
+## Run it
+
+```bash
+pnpm --filter spend-export test
+```
+
+Expected output:
+
+```
+✓ spend-export smoke > returns correct row count and total (11ms)
+
+Test Files  1 passed
+Tests       1 passed
+Duration    312ms
+```
+
+## Extend it
+
+- Add a `json` format branch to `run()` that uploads a JSONL file instead of CSV.
+- Add a `maxRows` cap and return a `truncated: true` flag in the output when hit.
+- Wire the skill into the MCP gateway by registering it in `apps/mcp/src/skills/registry.ts`.
+- Publish under `@glideco/skill-spend-export` using `node scripts/publish-glide-skill.mjs spend-export`.
+- Add an anomaly heuristic that fires when the exported row count exceeds 2× the account's 30-day average.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/build-a-skill-spend-export](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/build-a-skill-spend-export)
+
+## Reading list
+
+- [Skill authoring guide](/oss/skills/authoring) — lifecycle, consent model, and publication checklist.
+- [SkillManifest schema](/oss/standards/skill-manifest) — every field and its validation rules.
+- [AgentPolicyEnvelope schema](/oss/standards/agent-policy-envelope) — how policy templates compose with live envelopes.

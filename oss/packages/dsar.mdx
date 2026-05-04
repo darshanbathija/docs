@@ -1,0 +1,191 @@
+---
+title: "@glideco/dsar"
+description: "DSAR redaction primitives for the Glide agent activity log. Bitmap-encoded partial redaction and full-erasure tombstone, append-only-safe."
+icon: "user-secret"
+---
+
+DSAR (Data Subject Access Request) redaction primitives for the Glide agent
+activity log. The package handles two operations: `redact()`, which ORs new bits
+into a row's `redacted_fields_bitmap` for a named set of fields, and `tombstone()`,
+which sets every redactable bit — leaving the row structurally intact for audit
+integrity while marking all PII fields as erased.
+
+Both operations obey the F4 IRON RULE (append-only audit): the underlying
+`activity_log` table carries a Postgres trigger that rejects `UPDATE`/`DELETE`/
+`TRUNCATE` unless the current session has set `app.dsar_context_id`. This package
+sets that session variable before every write, then appends a companion audit row
+to record who redacted what and why.
+
+The package is DB-agnostic. Operators pass in an `executor` that wires their own
+DB driver (Drizzle, raw `pg`, Knex, Prisma) without coupling this package to any
+ORM.
+
+## Install
+
+```bash
+npm install @glideco/dsar
+```
+
+[npmjs.com/package/@glideco/dsar](https://www.npmjs.com/package/@glideco/dsar)
+
+## Why a bitmap?
+
+A single 32-bit integer stores the redaction state for all 8 v1 fields in one
+column with no schema change. The bitmap is additive — bits only ever get set,
+never cleared — which is consistent with the append-only audit posture: a
+subsequent redaction OR-merges into the existing bitmap rather than replacing it.
+
+Field positions are stable v1. Adding a new redactable field takes an unused bit
+position (8–31); repositioning or removing an existing field is a major-version
+bump.
+
+## v1 field positions
+
+| Bit | Field           |
+| --- | --------------- |
+| 0   | `input_digest`  |
+| 1   | `output_digest` |
+| 2   | `on_chain_tx`   |
+| 3   | `counterparty`  |
+| 4   | `amount`        |
+| 5   | `vendor_used`   |
+| 6   | `grant_id`      |
+| 7   | `step_up_sigil` |
+
+## Wiring the executor
+
+Operators implement the `DsarExecutor` interface over their DB driver. The four
+methods map to: set a Postgres session variable, write the bitmap, read the
+current bitmap, and append an audit row. All four must run inside the same
+transaction:
+
+```ts
+import { redact, type DsarExecutor } from '@glideco/dsar';
+import { db, activityLog } from '../db';
+import { eq, sql } from 'drizzle-orm';
+
+const executor: DsarExecutor = {
+  async setSessionVar(name, value) {
+    await db.execute(sql`SELECT set_config(${name}, ${value}, true)`);
+  },
+  async setBitmap(rowId, bitmap) {
+    await db
+      .update(activityLog)
+      .set({ redactedFieldsBitmap: bitmap })
+      .where(eq(activityLog.id, rowId));
+  },
+  async getBitmap(rowId) {
+    const [row] = await db
+      .select({ redactedFieldsBitmap: activityLog.redactedFieldsBitmap })
+      .from(activityLog)
+      .where(eq(activityLog.id, rowId))
+      .limit(1);
+    return row?.redactedFieldsBitmap ?? null;
+  },
+  async appendAuditRow(audit) {
+    await db.insert(activityLog).values({
+      action: audit.action,
+      details: audit.details,
+    });
+  },
+};
+```
+
+## Partial redaction
+
+`redact()` applies a named-field redaction. The new bitmap is the OR of the
+existing bitmap and the bits for the listed fields, so a second call for
+different fields accumulates rather than replaces:
+
+```ts
+import { redact } from '@glideco/dsar';
+
+await db.transaction(async () => {
+  const result = await redact(executor, {
+    rowId: 'row_7f3a1b',
+    fields: ['amount', 'counterparty'],
+    reason: 'GDPR right-to-erasure request from alice@example.com (ticket DPO-2026-0041)',
+    actorUserId: 'admin_dpo_xyz',
+  });
+  // result = { ok: true, newBitmap: 0b00011000 }  (bits 3 + 4)
+});
+```
+
+The `reason` field requires at least 10 characters and accepts up to 500. Short
+reasons fail `RedactInputSchema.parse` before the first DB call, so there's no
+risk of a zero-context audit row.
+
+## Full erasure (tombstone)
+
+`tombstone()` sets `ALL_FIELDS_BITMAP` (all 8 bits, value `0xFF`) in a single
+write. Use this when the right-to-erasure covers the entire row rather than
+specific fields:
+
+```ts
+import { tombstone } from '@glideco/dsar';
+
+await db.transaction(async () => {
+  await tombstone(executor, {
+    rowId: 'row_7f3a1b',
+    reason: 'Account closure request — full erasure per DPO sign-off on DPO-2026-0041',
+    actorUserId: 'admin_dpo_xyz',
+  });
+  // The row still exists; every field renders as [REDACTED] in the UI.
+});
+```
+
+The row is preserved for audit-log structural integrity (F4). Its `eventType`,
+`createdAt`, and `entityId` are non-redactable by design — a compliance auditor
+needs to confirm "a tool_call occurred at time T for entity E" even after full
+erasure.
+
+## Bitmap utilities
+
+The package exports the bitmap helpers for callers that need to inspect redaction
+state independently of the write operations:
+
+```ts
+import {
+  fieldsToBitmap,
+  isFieldRedacted,
+  bitmapToFields,
+  ALL_FIELDS_BITMAP,
+  REDACTABLE_FIELDS,
+} from '@glideco/dsar';
+
+// Which bits correspond to ['amount', 'counterparty']?
+const bits = fieldsToBitmap(['amount', 'counterparty']); // 0b00011000 = 24
+
+// Is 'counterparty' redacted in a stored row?
+const redacted = isFieldRedacted(row.redactedFieldsBitmap, 'counterparty');
+
+// Enumerate all redacted fields for a given bitmap:
+const fields = bitmapToFields(0b10101010);
+// ['output_digest', 'counterparty', 'vendor_used', 'step_up_sigil']
+```
+
+## Append-only trigger contract
+
+The `activity_log` trigger rejects `UPDATE`/`DELETE`/`TRUNCATE` unless
+`app.dsar_context_id` is set in the current Postgres session. When set, only
+`UPDATE` on `redacted_fields_bitmap` is allowed — no other column. This package
+calls `setSessionVar('app.dsar_context_id', actorUserId)` before every write,
+which unblocks the trigger for that transaction only (`set_config(..., true)`
+scopes the variable to the transaction).
+
+A reference trigger definition is in
+[`apps/web/drizzle/0042_activity_log_agent_cols.sql`](https://github.com/darshanbathija/axtior-neobank/blob/main/apps/web/drizzle/0042_activity_log_agent_cols.sql).
+Self-hosters who implement their own trigger must honor the same contract for the
+executor to work correctly.
+
+## Reading list
+
+- [`@glideco/agent-events`](/docs/oss/packages/agent-events) — defines
+  `dsar_redaction_applied` and `dsar_tombstone_applied` event schemas that
+  this package appends as audit rows.
+- [`@glideco/compliance-export`](/docs/oss/packages/compliance-export) —
+  surfaces `redactedFieldsBitmap` in the export envelope; reviewers see
+  `[REDACTED]` for set bits.
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) —
+  F4 (append-only audit) is the contract this package enforces at the DB layer.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/dsar)

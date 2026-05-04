@@ -79,6 +79,122 @@ Mint a cursor for subscribing to this agent's event stream over SSE. The cursor 
 }
 ```
 
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "audit.stream",
+    "params": {
+      "from_iso": "2026-05-04T00:00:00Z"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// Mint an SSE cursor starting from midnight today
+const result = await client.call('audit.stream', {
+  from_iso: '2026-05-04T00:00:00Z',
+});
+
+// Open the SSE stream
+const eventSource = new EventSource(result.sse_url);
+eventSource.onmessage = (e) => console.log(JSON.parse(e.data));
+
+console.log(`Cursor expires at: ${result.expires_at}`);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+import sseclient
+import requests
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("audit.stream", {
+    "from_iso": "2026-05-04T00:00:00Z",
+})
+
+# Open the SSE stream
+response = requests.get(result["sse_url"], stream=True)
+sse = sseclient.SSEClient(response)
+for event in sse.events():
+    print(event.data)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Successful response — returns an SSE cursor URL:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "sse_url": "https://mcp.glide.co/sse/audit?cursor=eyJhbGciOiJIUzI1NiJ9.eyJhZ2VudCI6ImQ0ZTVmNmE3In0.sig",
+    "cursor": "eyJhbGciOiJIUzI1NiJ9.eyJhZ2VudCI6ImQ0ZTVmNmE3In0.sig",
+    "expires_at": "2026-05-04T13:00:00Z",
+    "heartbeat_seconds": 30
+  }
+}
+```
+
+Error — missing `audit:stream` scope:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32002,
+    "message": "grant does not include audit:stream scope",
+    "data": {
+      "reason_id": "insufficient_scope"
+    }
+  }
+}
+```
+
+Error — `from_iso` is not a valid ISO 8601 datetime:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "from_iso does not match expected datetime format",
+    "data": {
+      "reason_id": "invalid_date_format"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `from_iso` is not a valid UTC ISO 8601 datetime | Validate against schema before call |
+| `-32000` | Unauthenticated | Missing `Authorization` header | Supply a valid `Bearer` token |
+| `-32001` | Unauthorized | Grant token expired or revoked | Refresh token via `agent.grant.refresh` |
+| `-32002` | Insufficient scope | Grant missing `audit:stream` scope | Issue new grant with `audit:stream` scope |
+| `-32603` | Internal error | Server-side error | Retry with backoff; contact support |
+
 ## Auth
 
-Caller's grant must include the `audit:stream` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `audit:stream` scope. Grants whose scope set is a superset of the required scope are accepted.

@@ -101,4 +101,96 @@ Revoke a child agent and optionally auto-sweep its sub-vault back to the parent 
 
 ## Auth
 
-Caller's grant must include the `agent:budget:revoke` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `agent:budget:revoke` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "agent.budget.revoke",
+    "params": {
+      "agent_principal_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "auto_sweep": true,
+      "reason": "user_request"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('agent.budget.revoke', {
+  agent_principal_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  auto_sweep: true,
+  reason: 'user_request',
+});
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("agent.budget.revoke", {
+    "agent_principal_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "auto_sweep": True,
+    "reason": "user_request",
+})
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Success — agent revoked and sweep queued:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "agent_principal_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "revoked_at": "2026-05-04T11:00:00Z",
+    "grants_revoked": 3,
+    "sweep_plan_queued": true
+  }
+}
+```
+
+Agent already revoked (idempotent re-call):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "agent a1b2c3d4-e5f6-7890-abcd-ef1234567890 was already revoked",
+    "data": { "reason_id": "already_revoked" }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `agent_principal_id` not a valid UUID, or agent was already revoked | Check `reason_id` — `already_revoked` means a prior call succeeded |
+| `-32001` | Unauthorized | Grant belongs to a different tenant than the target agent | Confirm `agent_principal_id` was created by the calling entity |
+| `-32002` | Policy denied | Grant missing `agent:budget:revoke` scope | Issue a new grant with the required scope |
+| `-32603` | Internal error | Sweep-plan write failed; agent row is revoked but sweep may need manual trigger | Check `sweep_plan_queued` in a retry response |

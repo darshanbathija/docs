@@ -1,0 +1,305 @@
+---
+title: "x402 paid API"
+description: "Build a pay-per-call API using @glideco/x402-facilitator. Server calls handleVerify and handleSettle directly; client sends X-Payment header. About 25 minutes."
+icon: "coins"
+---
+
+This recipe builds an Express server that returns HTTP 402 until an on-chain USDC payment is
+verified. `handleVerify` and `handleSettle` from `@glideco/x402-facilitator` are called
+directly in route handlers — there is no Express middleware abstraction. The client
+side constructs and sends the `X-Payment` header with a payment payload.
+
+**F1 rule:** the server verifies payment via server-side RPC, never by trusting a
+facilitator response body. `on_chain_tx` in the receipt is always server-fetched from
+chain RPC.
+
+Audience: developers who want to monetize an API call without a billing dashboard.
+
+## Prerequisites
+
+- Node 22+ and pnpm.
+- A Base Sepolia wallet with test USDC — get some from the [Coinbase faucet](https://faucet.base.org).
+- Optional: a Chainalysis API key if you want real sanctions screening instead of the
+  permissive demo screener.
+
+## Steps
+
+### 1. Clone the example
+
+```bash
+cd axtior-neobank/examples/x402-paid-api
+pnpm install
+```
+
+### 2. Set environment variables
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# .env
+PORT=3001
+PAYEE_ADDRESS=0xYourPayeeAddress000000000000000000000001
+```
+
+### 3. Build the server (`src/server.ts`)
+
+The server exposes three routes:
+
+- `GET /api/weather` — returns 402 (no payment) or 200 (valid payment)
+- `POST /x402/verify` — verify a payment payload; returns `{ isValid, ... }`
+- `POST /x402/settle` — settle on-chain (mocked in the example); returns `{ success, txHash }`
+
+```ts
+// src/server.ts
+import express from 'express';
+import {
+  handleVerify,
+  handleSettle,
+  X402_VERSION_HEADER,
+  X402_FACILITATOR_VERSION,
+  type HandleVerifyDeps,
+  type HandleSettleDeps,
+  type SettleResponse,
+  type ComplianceScreener,
+  type ScreeningResult,
+} from '@glideco/x402-facilitator';
+
+const PORT = Number(process.env['PORT'] ?? 3001);
+const PAYEE_ADDRESS = process.env['PAYEE_ADDRESS']!;
+const PRICE_USDC_MICRO = 1000; // 0.001 USDC (6 decimals)
+
+const app = express();
+app.use(express.json({ limit: '4mb' }));
+```
+
+**Compliance screener.** The example uses a permissive allow-all screener so it runs
+without Chainalysis credentials. Swap in `@glideco/connector-chainalysis` in production —
+the `ComplianceScreener` interface is the same.
+
+```ts
+// Permissive demo screener — replace with @glideco/connector-chainalysis in production
+const permissiveScreener: ComplianceScreener = {
+  async screenSanctions(): Promise<ScreeningResult> {
+    return { verdict: 'allow', reason: 'permissive-demo', provider: 'demo' };
+  },
+};
+```
+
+**`/x402/verify` route.** Decodes the payment payload and runs the compliance pipeline.
+In production, replace the demo decoder with EIP-712 signed transfer authorization
+validation.
+
+```ts
+const verifyDeps: HandleVerifyDeps = {
+  async decodePayload({ payload }) {
+    if (payload.startsWith('demo-')) {
+      return {
+        valid: true,
+        payerAddress: '0xDemoPayerAddress000000000000000000000001',
+        payeeAddress: PAYEE_ADDRESS,
+        amount: String(PRICE_USDC_MICRO),
+      };
+    }
+    return { valid: false, invalidReason: 'invalid_signature' as const };
+  },
+  screener: permissiveScreener,
+};
+
+app.post('/x402/verify', async (req, res) => {
+  const result = await handleVerify(req.body, verifyDeps);
+  res.setHeader(X402_VERSION_HEADER, X402_FACILITATOR_VERSION);
+  res.json(result);
+});
+```
+
+**`/x402/settle` route.** Derives a content-bound idempotency key, replays on cache hit,
+re-verifies (TOCTOU defense), then broadcasts.
+
+```ts
+const idempotencyCache = new Map<string, SettleResponse>();
+
+const settleDeps: HandleSettleDeps = {
+  async preflightVerify(request) {
+    return handleVerify(request, verifyDeps);
+  },
+  async loadIdempotent(key) {
+    return idempotencyCache.get(key);
+  },
+  async storeIdempotent(key, response) {
+    idempotencyCache.set(key, response);
+  },
+  async broadcast({ network }) {
+    // Production: call USDC.transfer on Base via viem or ethers.
+    // Return the real txHash from the chain receipt — never from a
+    // facilitator response body (F1 IRON RULE).
+    return {
+      success: true,
+      txHash: `0x${'demo'.repeat(16)}`.slice(0, 66),
+      blockNumber: 12_345_678,
+    };
+  },
+};
+
+app.post('/x402/settle', async (req, res) => {
+  const result = await handleSettle(req.body, settleDeps);
+  res.setHeader(X402_VERSION_HEADER, X402_FACILITATOR_VERSION);
+  res.json(result);
+});
+```
+
+**Paid endpoint.** On a request without `X-Payment`, return 402 with the payment
+requirements. On a request with `X-Payment`, call `handleVerify` directly before
+returning data.
+
+```ts
+app.get('/api/weather', async (req, res) => {
+  const paymentHeader = req.headers['x-payment'] as string | undefined;
+
+  if (!paymentHeader) {
+    res.status(402).json({
+      x402Version: X402_FACILITATOR_VERSION,
+      error: 'Payment required',
+      accepts: [
+        {
+          scheme: 'exact',
+          network: 'base',
+          resource: `${req.protocol}://${req.get('host')}/api/weather`,
+          description: 'Weather data — 0.001 USDC per call',
+          mimeType: 'application/json',
+          payTo: PAYEE_ADDRESS,
+          maxAmountRequired: String(PRICE_USDC_MICRO),
+          maxTimeoutSeconds: 60,
+          asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+          extra: { facilitatorUrl: `http://localhost:${PORT}` },
+        },
+      ],
+    });
+    return;
+  }
+
+  // Verify the payment before returning data. Do NOT trust the header
+  // value without verification — F1 rule.
+  const verifyResult = await handleVerify(
+    {
+      x402Version: X402_FACILITATOR_VERSION,
+      paymentPayload: paymentHeader,
+      paymentRequirements: {
+        scheme: 'exact',
+        network: 'base',
+        resource: `${req.protocol}://${req.get('host')}/api/weather`,
+        payTo: PAYEE_ADDRESS,
+        maxAmountRequired: String(PRICE_USDC_MICRO),
+        maxTimeoutSeconds: 60,
+        asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      },
+    },
+    verifyDeps
+  );
+
+  if (!verifyResult.isValid) {
+    res.status(402).json({
+      error: 'invalid_payment',
+      reason: verifyResult.invalidReason,
+    });
+    return;
+  }
+
+  res.json({ temp: 72, unit: 'F', city: 'San Francisco' });
+});
+
+app.listen(PORT, () => {
+  console.log(`[server] listening on http://localhost:${PORT}`);
+});
+```
+
+### 4. Write the client (`src/client.ts`)
+
+The client follows the four-step x402 flow: probe → verify → settle → retry with header.
+No special x402 client library is needed — standard `fetch` throughout.
+
+```ts
+// src/client.ts
+const BASE_URL = `http://localhost:${process.env['PORT'] ?? 3001}`;
+
+// Step 1: hit the paid endpoint — expect 402
+const firstRes = await fetch(`${BASE_URL}/api/weather`);
+const fourOhTwo = await firstRes.json();
+const req = fourOhTwo.accepts[0];
+
+// Step 2: construct a demo payment payload and verify it
+const demoPayload = `demo-payment-${Date.now()}`;
+const verifyRes = await fetch(`${BASE_URL}/x402/verify`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    x402Version: fourOhTwo.x402Version,
+    paymentPayload: demoPayload,
+    paymentRequirements: req,
+  }),
+});
+const verifyBody = await verifyRes.json();
+if (!verifyBody.isValid) throw new Error('verify failed');
+
+// Step 3: settle (broadcasts the mock transfer)
+const settleRes = await fetch(`${BASE_URL}/x402/settle`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    x402Version: fourOhTwo.x402Version,
+    paymentPayload: demoPayload,
+    paymentRequirements: req,
+    idempotencyKey: `weather-${Date.now()}`,
+  }),
+});
+const settleBody = await settleRes.json();
+console.log('settled txHash:', settleBody.txHash?.slice(0, 20));
+
+// Step 4: retry with X-Payment header
+const paidRes = await fetch(`${BASE_URL}/api/weather`, {
+  headers: { 'X-Payment': demoPayload },
+});
+const data = await paidRes.json();
+console.log('weather:', JSON.stringify(data));
+```
+
+In production, replace the demo payload with a real EIP-712 signed USDC transfer
+authorization from the payer's wallet.
+
+## Run it
+
+```bash
+# Terminal 1
+npx tsx src/server.ts
+
+# Terminal 2
+npx tsx src/client.ts
+```
+
+Expected output:
+
+```
+[server] listening on http://localhost:3001
+[client] settled txHash: 0xdemodemodemo...
+[client] weather: {"temp":72,"unit":"F","city":"San Francisco"}
+```
+
+## Extend it
+
+- Swap the permissive screener for `@glideco/connector-chainalysis` to get real OFAC screening on every payment.
+- Move `idempotencyCache` to Redis so replay protection survives server restarts.
+- Add tiered pricing: return different `maxAmountRequired` values per endpoint in the 402 body.
+- Port to a Next.js API route — call `handleVerify` and `handleSettle` directly in the route handler; the pattern is identical.
+- Derive the idempotency cache key using `deriveIdempotencyCacheKey` from `@glideco/x402-facilitator` — it binds the key to `(payTo, network, payloadHash)` to prevent cross-tenant cache poisoning.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/x402-paid-api](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/x402-paid-api)
+
+## Reading list
+
+- [`@glideco/x402-facilitator` package](/oss/packages/x402-facilitator) — `handleVerify`, `handleSettle`, `runCompliancePipeline`, `deriveIdempotencyCacheKey` API reference.
+- [`@repo/connectors-coinbase-x402`](/oss/packages/connectors-coinbase-x402) — `decodeXPaymentHeader`, `encodeXPaymentHeader`, `handleX402Request` for production client-side payment construction.
+- [Receipt schema](/oss/standards/receipt) — how x402 receipts map to the Glide receipt model.
+- [F1 rule](/oss/security/money-safety-rules) — why `on_chain_tx` must be server-fetched, never from a facilitator body.

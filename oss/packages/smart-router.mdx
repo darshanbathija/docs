@@ -1,0 +1,128 @@
+---
+title: "@glideco/smart-router"
+description: "Pure-function payment rail selection. Cheapest-first sort, latency tiebreaker, internal-vault short-circuit, policy filtering."
+icon: "route"
+---
+
+Pure-function core of `glide.pay()`. Takes pre-quoted rail candidates and returns a ranked failover list — or immediately short-circuits to a free internal transfer when the destination is a same-entity Glide vault on the same chain.
+
+No IO. The 50ms quote-race timeout and connector dispatch live in the caller. The router's job is to sort, filter, and truncate.
+
+## Install
+
+```bash
+npm install @glideco/smart-router
+```
+
+[npmjs.com/package/@glideco/smart-router](https://www.npmjs.com/package/@glideco/smart-router)
+
+## Why pure functions
+
+The router executes in the hot path of every `glide.pay()` call. Keeping it IO-free means it's O(N) sort + filter, deterministic, and testable without network stubs. The caller owns the quote-fetch race, the `pay_attempts` claim loop, and the saga reaper. The router only decides order.
+
+Separating the decision from the dispatch also makes the double-spend contract explicit: the router returns a list; the caller must claim each attempt atomically in the `pay_attempts` table and wait for on-chain confirmation before failing over. A naive `catch → next candidate` loop can double-spend across rails if a broadcast succeeded but the HTTP response was dropped. That contract is documented in `router.ts` and enforced via tests in `apps/web/tests/smart-router-dispatch-contract.test.ts`.
+
+## Rails
+
+The `rail` enum covers the full Glide payment surface: `x402-evm`, `x402-svm`, `x402-stellar`, `x402-tempo`, `mpp-tempo`, `mpp-svm`, `mpp-session`, `stripe-mpp`, `lightning`, `internal`, `self-custody-evm`, `self-custody-svm`, `self-custody-xchain`.
+
+## API surface
+
+### `routePayment(args): RouteDecision`
+
+```ts
+import { routePayment } from '@glideco/smart-router';
+
+const decision = routePayment({
+  intent: {
+    amount_cents: 5000,
+    destination: '0xabc...def',
+    chain: 'base',
+    currency: 'USDC',
+    urgency: 'normal',
+    idempotency_key: 'pay_2024_invoice_007',
+  },
+  candidates: [
+    {
+      connector_slug: 'bridge',
+      rail: 'x402-evm',
+      quoted_fee_cents: 12,
+      quoted_latency_p95_ms: 800,
+      is_fiat: false,
+      has_quote_side_effect: false,
+    },
+    {
+      connector_slug: 'monerium',
+      rail: 'mpp-tempo',
+      quoted_fee_cents: 5,
+      quoted_latency_p95_ms: 1200,
+      is_fiat: false,
+      has_quote_side_effect: false,
+    },
+  ],
+  policy: {
+    fiat_only: false,
+    crypto_only: false,
+    allowed_connector_slugs: [],
+    exclude_side_effecting_from_failover: true,
+    max_failover_attempts: 4,
+  },
+  is_internal_vault: false,
+});
+
+// decision.ordered[0].connector_slug → 'monerium' (cheaper)
+// decision.reason → '2 candidates after policy filter; sorted by fee ASC...'
+```
+
+### Internal-vault short-circuit
+
+When `is_internal_vault` is `true`, the router returns a single `glide-internal` candidate with zero fee and 50ms p95 latency — no quote-race, no failover, no vendor call.
+
+```ts
+const decision = routePayment({
+  intent,
+  candidates,
+  policy,
+  is_internal_vault: true,
+});
+
+if (isInternalVaultRoute(decision)) {
+  // decision.ordered[0].rail === 'internal'
+  // decision.ordered[0].quoted_fee_cents === 0
+}
+```
+
+### Policy filtering
+
+```ts
+// Crypto-only, limited to two connectors, 2 failover attempts max
+const decision = routePayment({
+  intent,
+  candidates,
+  is_internal_vault: false,
+  policy: {
+    fiat_only: false,
+    crypto_only: true,
+    allowed_connector_slugs: ['bridge', 'monerium'],
+    exclude_side_effecting_from_failover: true,
+    max_failover_attempts: 2,
+  },
+});
+```
+
+`fiat_only` and `crypto_only` are mutually exclusive — the schema rejects both being `true` at parse time rather than silently returning an empty list.
+
+## Receipt shapes
+
+The package exports two discriminated receipt schemas for the post-dispatch audit writer: `OnchainReceipt` (`kind: 'onchain'` — txHash, verified amount, verified recipient) and `FiatReceipt` (`kind: 'fiat'` — vendor tx id, `settlement_status`). Use `SmartRouterSchemas.receipt` to parse the right shape.
+
+## Side-effecting connectors
+
+Some connectors create vendor-side state during the quote phase (Aeon's `prepareOfframp` creates a vendor order; Manteca creates a vendor-side order ID). These must be excluded from the failover pool — a failed-over retry would leave a phantom order that requires manual cleanup. Pass `has_quote_side_effect: true` on those candidates and `exclude_side_effecting_from_failover: true` on the policy. The router drops them entirely; route them via a dedicated direct-dispatch path instead.
+
+## Reading list
+
+- [`@glideco/parley-tiers`](/docs/oss/packages/parley-tiers) — projects router output into a turbo/fast/batch tier vocabulary for agent chooser UIs.
+- [`@glideco/crosschain-bridge`](/docs/oss/packages/crosschain-bridge) — quote + dispatch shapes for cross-chain candidates fed into this router.
+- [Agent Policy Envelope schema](/docs/oss/standards/agent-policy-envelope) — the policy format agents carry.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/smart-router)

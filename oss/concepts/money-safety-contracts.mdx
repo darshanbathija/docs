@@ -12,7 +12,7 @@ Glide's agent platform encodes six named money-safety invariants — the **F-rul
 | --- | --- | --- |
 | **F1** — Server-side RPC verify | `x402.pay` persists `on_chain_tx` from `serverFetchChainTx()` (RPC), NEVER from facilitator receipt. Tampered facilitator-claims REJECTED. | `apps/mcp/src/tools/x402-pay.ts` |
 | **F2** — CAS-claim before broadcast | `agent_pending_payments` rows claimed via SQL `UPDATE ... WHERE status='pending' AND claimed_at IS NULL RETURNING id`. Race losers skip. Inngest re-fires never double-broadcast. | Migration `0041_agent_pending_payments.sql` + saga-reaper `0044` |
-| **F3** — Fresh-read tenant verification | `@glide/grant-wrapper` re-reads tenant from DB on every tool invocation. Cached grant alone NEVER authorizes. | `@glide/grant-wrapper` |
+| **F3** — Fresh-read tenant verification | `@glideco/grant-wrapper` re-reads tenant from DB on every tool invocation. Cached grant alone NEVER authorizes. | `@glideco/grant-wrapper` |
 | **F4** — Append-only `activity_log` trigger | UPDATE/DELETE/TRUNCATE rejected unless `app.dsar_context_id` session var set (admin DSAR path only). DSAR UPDATE additionally requires `redacted_fields_bitmap` match. | Migration `0042_activity_log_agent_cols.sql` |
 | **F5** — Atomic policy_version on signer rotation | `vault.rotateSigner` advances `policy_version` in the same transaction as the on-chain rotation. In-flight tool calls see `PolicyStaleError` on the next evaluation. | `apps/web/src/server/lib/agent-multisig/` |
 | **F7** — Sigil first-use-only | URL-mode elicitation sigils CAS-claimed on first use; race losers reject. Replay-resistant step-up. | `apps/mcp/src/step-up/` |
@@ -33,7 +33,7 @@ The saga-reaper (migration `0044`) cleans up workers that crashed AFTER claim bu
 
 ### F3 — A grant is a snapshot. Tenant is the source of truth.
 
-Bearer grants are valid until `exp`. Between issue and use, the principal's tenant membership might be revoked, transferred, or suspended. F3 says: **re-read the tenant row on every tool call, before authorizing.** `@glide/grant-wrapper` is the single point of truth.
+Bearer grants are valid until `exp`. Between issue and use, the principal's tenant membership might be revoked, transferred, or suspended. F3 says: **re-read the tenant row on every tool call, before authorizing.** `@glideco/grant-wrapper` is the single point of truth.
 
 ### F4 — Audit log integrity is non-negotiable.
 

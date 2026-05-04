@@ -96,4 +96,105 @@ Atomic kill-switch: revoke every active grant + freeze every sub-vault for this 
 
 ## Auth
 
-Caller's grant must include the `agent:budget:revoke` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `agent:budget:revoke` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "killSwitch.all",
+    "params": {
+      "reason": "anomaly",
+      "confirm_scope": "ALL_AGENTS_THIS_PRINCIPAL"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+// confirm_scope must be the exact literal string — this is an intentional
+// friction gate to prevent accidental invocation.
+const result = await client.call('killSwitch.all', {
+  reason: 'anomaly',
+  confirm_scope: 'ALL_AGENTS_THIS_PRINCIPAL',
+});
+
+console.log(
+  `Kill switch executed: ${result.grants_revoked} grants revoked, ` +
+  `${result.agents_revoked} agents revoked, ${result.vaults_frozen} vaults frozen.`
+);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+result = client.call(
+    "killSwitch.all",
+    {
+        "reason": "anomaly",
+        "confirm_scope": "ALL_AGENTS_THIS_PRINCIPAL",
+    },
+)
+print(
+    f"Kill switch executed: {result['grants_revoked']} grants revoked, "
+    f"{result['agents_revoked']} agents revoked, {result['vaults_frozen']} vaults frozen."
+)
+```
+
+</CodeGroup>
+
+## Response examples
+
+**Success**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "grants_revoked": 4,
+    "agents_revoked": 3,
+    "vaults_frozen": 3,
+    "executed_at": "2026-05-04T15:45:00Z"
+  }
+}
+```
+
+**Wrong `confirm_scope` literal**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "Invalid params",
+    "data": {
+      "reason_id": "invalid_params"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | `reason_id` | Meaning |
+| ---- | ----------- | ------- |
+| `-32000` | `unauthenticated` | Bearer token missing or expired. |
+| `-32001` | `unauthorized` | Grant does not include `agent:budget:revoke`. |
+| `-32602` | `invalid_params` | `confirm_scope` was not the exact literal `"ALL_AGENTS_THIS_PRINCIPAL"`, or `reason` is not one of the allowed enum values. |
+| `-32603` | `internal_error` | Transient fault. Re-check the admin UI — a partial kill may have already occurred. Use the forensic kill-switch at `/admin/agents-kill-switch` to verify state. |
+
+**Idempotency note:** This tool is marked idempotent. Calling it a second time after a successful execution returns the same result shape without performing a second revocation sweep. Calling it with a different `reason` after a prior successful call is a no-op on the revocation side (all grants are already revoked); `executed_at` will reflect the second call's timestamp but counts will be `0`.

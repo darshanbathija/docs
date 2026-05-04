@@ -89,4 +89,106 @@ Freeze a previously issued card. The card will reject subsequent authorizations 
 
 ## Auth
 
-Caller's grant must include the `cards:manage` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `cards:manage` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "cards.freeze",
+    "params": {
+      "card_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+      "reason": "anomaly"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('cards.freeze', {
+  card_id: 'd4e5f6a7-b8c9-0123-defa-234567890123',
+  reason: 'anomaly',
+});
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("cards.freeze", {
+    "card_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+    "reason": "anomaly",
+})
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Success — card frozen:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "card_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+    "frozen_at": "2026-05-04T14:22:10Z",
+    "reason": "anomaly"
+  }
+}
+```
+
+Card not found:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "no card d4e5f6a7-b8c9-0123-defa-234567890123",
+    "data": { "reason_id": "card_not_found" }
+  }
+}
+```
+
+Card belongs to a different vault:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "card d4e5f6a7-b8c9-0123-defa-234567890123 does not belong to vault b2c3d4e5-f6a7-8901-bcde-f12345678901",
+    "data": { "reason_id": "card_belongs_to_other_vault" }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `card_id` not a valid UUID, or card does not exist (`card_not_found`) | Confirm the card was issued by this agent |
+| `-32001` | Unauthorized | Card belongs to a different vault or a sibling agent | Use the `card_id` returned by `cards.issue` for this grant |
+| `-32002` | Policy denied | Grant missing `cards:manage` scope | Issue a new grant with the required scope |
+| `-32603` | Internal error | Issuer-side freeze call failed | Retry — freeze is idempotent; a second call is safe |

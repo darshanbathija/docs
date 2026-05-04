@@ -1,0 +1,109 @@
+---
+title: "ScopedGrantClaims (draft)"
+description: "JWT claims for the OAuth bearer grant. RFC 8707 resource-indicator-bound to a single vault + entity. Max TTL 60 minutes."
+icon: 'id-badge'
+---
+
+`ScopedGrantClaims` is the JWT payload the OAuth Authorization Server (Ory Hydra in production; HMAC-SHA256 in development) issues to MCP clients after a successful `client_credentials` or authorization-code exchange. Every MCP tool call carries one of these grants as a Bearer token. The `@glideco/grant-wrapper` package re-validates the grant on every invocation — a cached token alone never authorizes.
+
+The relationship to [`Grant`](/docs/oss/standards/grant): `Grant` is the human-facing doc page that maps the JWT fields to their semantic meaning for agent developers. `ScopedGrantClaims` is the machine-readable JSON Schema document that partner verification tooling and token-introspection endpoints validate against. The two describe the same wire format; this page is the canonical schema reference.
+
+## Canonical URL
+
+[`https://glide.co/schemas/agent-banking/v1/scoped-grant-claims.json`](https://glide.co/schemas/agent-banking/v1/scoped-grant-claims.json)
+
+## Required fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `sub` | `uuidV4` | RFC 7519 §4.1.2 subject — the human principal who owns the vault and authorized this grant. |
+| `act` | `{ sub: uuidV4 }` | RFC 8693 §4.1 actor claim. `act.sub` is the `agent_principal_id`. Glide always sets this; missing actor is denied at the verifier. |
+| `azp` | `string` (1–128 chars, `[a-zA-Z0-9._:-]`) | Authorized party — the registered MCP `client_id` (e.g. `claude-desktop-prod`). Write tools refuse clients not on the registry. |
+| `aud` | `{ vault_id: uuidV4, entity_id: uuidV4 }` | RFC 8707 resource indicator in object form. Both `vault_id` AND `entity_id` must match the resource being acted on. Verifiers MUST check both — checking only `vault_id` is insufficient. |
+| `scope` | `agentScope[]` (min 1, unique) | RFC 6749 §3.3 scope set. Closed vocabulary from `_types.json#/$defs/agentScope`. Adding a scope value is CODEOWNERS-protected. Wildcard scopes (`treasury:*`) deferred to v1.5. |
+| `policy_version` | `nonNegativeInt` | Policy version at issuance. Policy engine re-checks this against `(vault_id, policy_version)` on each call; mismatch triggers one retry then denies (`PolicyStaleError`). |
+| `iat` | `unixSecondsPositive` | RFC 7519 §4.1.6 issued-at, Unix epoch seconds. MUST be `<= nbf <= exp`. |
+| `nbf` | `unixSecondsPositive` | RFC 7519 §4.1.5 not-before. Transactions attempted before this fail-closed. |
+| `exp` | `unixSecondsPositive` | RFC 7519 §4.1.4 expiry. Server enforces `exp - iat <= 3600` (60-minute TTL cap). Longer-running tasks use the keepalive pattern (Inngest job renews every ~30 min while in-flight). |
+| `jti` | `uuidV4` | RFC 7519 §4.1.7 JWT ID. Equals the grant row's primary key in the `grants` table; used for revocation lookup. |
+
+## Optional fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `iss` | `string` (https URI, max 256 chars) | RFC 7519 §4.1.1 issuer. Identifies Glide's AS (e.g. `https://glide.co`). Optional at v1 for backward compat with the original `/draft/` shape; SHOULD be set on all newly-issued grants. |
+| `resource` | `string[]` (https URIs, 1–8 items) | RFC 8707 resource indicators in canonical URI form. Optional — Glide derives the canonical URI from `aud.vault_id` + `aud.entity_id`. New code MAY emit this for OAuth-tooling compatibility. |
+
+## Validation contract
+
+`@glideco/grant-wrapper` re-validates every grant on every tool invocation in this order:
+
+1. **JWT signature** — verified against the AS's JWKS (production) or HMAC-SHA256 secret (development; set `MCP_TOKEN_VERIFIER_DEV_SECRET`).
+2. **`exp` not in the past** — bearer expiry check.
+3. **`exp - iat <= 3600`** — max TTL enforcement. Grants issued for longer than 60 min are rejected even if the signature is valid.
+4. **`aud.vault_id` + `aud.entity_id` present and match the resource on the request** — RFC 8707 enforcement. Both fields must match; one-sided match is denied.
+5. **`act.sub` corresponds to a registered agent** — DB lookup; stale or revoked agent principals are denied.
+6. **F3 IRON RULE — fresh-read tenant verification.** Re-reads the principal's tenant from DB. The cached token alone never authorizes.
+7. **`policy_version` matches the current envelope** — mismatch raises `PolicyStaleError` (F5).
+
+## Example
+
+```ts
+import { grantClaimsSchema } from '@glideco/schemas';
+
+const claims = grantClaimsSchema.parse({
+  iss: 'https://glide.co',
+  sub: '11111111-1111-4111-8111-111111111111',
+  act: { sub: '22222222-2222-4222-8222-222222222222' },
+  azp: 'claude-desktop-prod',
+  aud: {
+    vault_id: '33333333-3333-4333-8333-333333333333',
+    entity_id: '44444444-4444-4444-8444-444444444444',
+  },
+  scope: ['accounts:read', 'payments:initiate'],
+  policy_version: 7,
+  iat: 1746355200,
+  nbf: 1746355200,
+  exp: 1746358800,  // iat + 3600 — exactly at the 60-min cap
+  jti: '55555555-5555-4555-8555-555555555555',
+});
+```
+
+To enforce the 60-min TTL in server-side issue flow, use the stricter `grantClaimsValidatedSchema`:
+
+```ts
+import { grantClaimsValidatedSchema } from '@glideco/schemas';
+
+// This will throw ZodError if exp - iat > 3600.
+const validated = grantClaimsValidatedSchema.parse(rawClaims);
+```
+
+## Validating against the schema
+
+Three paths:
+
+1. **At grant-issue time** via `grantClaimsValidatedSchema.parse(claims)` in the OAuth AS route. Issues that fail parse are rejected before the JWT is signed.
+2. **At tool-invocation time** by `@glideco/grant-wrapper` — validates the decoded JWT payload before any tool handler runs.
+3. **Against the JSON Schema document** for partner verification tooling:
+
+   ```bash
+   npx ajv-cli validate \
+     -s https://glide.co/schemas/agent-banking/v1/scoped-grant-claims.json \
+     -d ./my-grant.json
+   ```
+
+## Common pitfalls
+
+- **Checking only `aud.vault_id` and ignoring `aud.entity_id`.** A grant scoped to vault A within entity X is invalid against vault A re-assigned to entity Y. Both fields must match on every call.
+- **Issuing grants with TTL > 3600.** `grantClaimsSchema` accepts longer-lived claims (it's a structural schema); only `grantClaimsValidatedSchema` enforces the 60-min cap. The AS always uses the validated schema — custom AS implementations MUST replicate this check.
+- **Treating `iss` as required for backward compat.** The `iss` field is optional at v1 so existing `/draft/` consumers keep working. New AS implementations SHOULD set it.
+- **Using `scope` as a string.** The Zod schema for `scope` is `string[]` (an array); the JSON Schema also defines it as an array. Some OAuth libraries serialize scope as a space-separated string. Parse the JWT payload before validating — decode-then-parse, not validate-raw-JWT-bytes.
+- **Using `resource` instead of `aud` for resource binding.** The `resource` array is an optional RFC 8707 compatibility aid. Glide's verifier derives canonical URIs from `aud.vault_id` + `aud.entity_id`, not from `resource`. Verifiers that only check `resource` leave tenant isolation unenforced.
+
+## Reading list
+
+- [OAuth flow](/docs/oss/headless/oauth-flow) — the full `client_credentials` → JWT → JWKS verify walkthrough.
+- [Grant](/docs/oss/standards/grant) — developer-facing explanation of what each claim means at runtime.
+- [AgentPolicyEnvelope](/docs/oss/standards/agent-policy-envelope) — what `policy_version` references.
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — F3 + F5 IRON RULES the verifier enforces.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/apps/web/public/schemas/agent-banking/v1/scoped-grant-claims.json)

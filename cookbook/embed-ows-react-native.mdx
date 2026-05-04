@@ -1,0 +1,195 @@
+---
+title: "Embed OWS React Native"
+description: "iOS Secure Enclave and Android StrongBox key generation, sign-and-verify, and agent identity binding in a React Native app. About 30 minutes."
+icon: "mobile-screen"
+---
+
+This recipe integrates `@glideco/ows-react-native` into an Expo-managed React Native app. You will configure iOS Secure Enclave and Android StrongBox key generation, bind the resulting public key to an agent identity, and sign a payload that the MCP gateway verifies on-chain. Audience: mobile engineers building a React Native app that participates in the Glide agent identity system.
+
+## Prerequisites
+
+- Expo SDK 52 + React Native 0.76.
+- Xcode 16 (for iOS Secure Enclave access).
+- Android Studio Ladybug (for StrongBox API 28+).
+- Node 22+ and pnpm.
+- Glide running locally per the [main quickstart](/oss/quickstart).
+
+## Steps
+
+### 1. Clone the example
+
+```bash
+git clone https://github.com/darshanbathija/axtior-neobank.git
+cd axtior-neobank/examples/embed-ows-react-native
+pnpm install
+```
+
+### 2. Install the package in your own app
+
+If you're wiring this into an existing app rather than running the example:
+
+```bash
+npx expo install @glideco/ows-react-native
+```
+
+The package ships pre-built native modules — no additional `pod install` or Gradle sync is needed beyond Expo's normal `prebuild`.
+
+### 3. iOS Secure Enclave setup
+
+Add the `com.apple.security.access-group` entitlement in your `app.json` or `app.config.ts`:
+
+```json
+{
+  "ios": {
+    "entitlements": {
+      "keychain-access-groups": ["$(AppIdentifierPrefix)com.yourapp.glide"]
+    }
+  }
+}
+```
+
+The native module uses `kSecAttrTokenIDSecureEnclave` when generating keys on devices with an A7 chip or later. On the iOS Simulator it falls back to software-backed keys automatically — tests pass but keys are not hardware-protected.
+
+### 4. Android StrongBox setup
+
+Add the permission to `AndroidManifest.xml` via `app.json`:
+
+```json
+{
+  "android": {
+    "permissions": ["android.permission.USE_BIOMETRIC"],
+    "minSdkVersion": 28
+  }
+}
+```
+
+The native module requests `setIsStrongBoxBacked(true)` when generating keys. On devices without StrongBox (Pixel 3 and earlier, most emulators), it falls back to TEE-backed keys. The `keyInfo.isInsideSecureHardware` field in the key metadata tells you which was used at runtime.
+
+### 5. Generate a key pair
+
+```tsx
+// src/identity.ts
+import { OWSKeychain } from '@glideco/ows-react-native';
+
+export async function generateAgentKey(agentId: string) {
+  const keyHandle = await OWSKeychain.generateKeyPair({
+    alias: `glide.agent.${agentId}`,
+    algorithm: 'EC',           // P-256 ECDSA
+    requiresBiometry: true,    // biometric gate on every sign call
+    invalidatedByBiometryChange: true,
+  });
+
+  const publicKeyDer = await OWSKeychain.exportPublicKey(keyHandle);
+  console.log('public key (DER hex):', Buffer.from(publicKeyDer).toString('hex'));
+  return { keyHandle, publicKeyDer };
+}
+```
+
+### 6. Bind the public key to an agent identity
+
+Send the `publicKeyDer` to the Glide MCP gateway to register it as the agent's signing key:
+
+```ts
+// src/register.ts
+import { call } from './rpc';
+
+export async function registerAgentKey(agentId: string, publicKeyDer: Uint8Array) {
+  const identity = await call('treasury', 'agent-identity.register', {
+    agentId,
+    publicKeyDer: Buffer.from(publicKeyDer).toString('base64'),
+    keyAlgorithm: 'EC_P256',
+    keyBackend: 'secure-enclave',   // or 'strongbox', 'tee'
+  });
+  console.log('registered:', identity.identityId);
+  return identity;
+}
+```
+
+### 7. Sign a payload
+
+```tsx
+// src/sign.tsx (React Native component excerpt)
+import { OWSKeychain } from '@glideco/ows-react-native';
+import { Alert } from 'react-native';
+
+export async function signPayload(keyHandle: string, payload: object): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+
+  // Biometric prompt fires here on both iOS and Android.
+  const signatureBytes = await OWSKeychain.sign({
+    keyHandle,
+    data: bytes,
+    biometryPrompt: 'Confirm payment with Face ID',
+  });
+
+  return Buffer.from(signatureBytes).toString('base64');
+}
+```
+
+### 8. Verify in the MCP gateway
+
+The signed payload + base64 signature go into the `Authorization` header as a custom scheme, or into the JSON-RPC `auth` envelope. The gateway resolves the `agentId` → registered public key → verifies the ECDSA signature before processing the tool call.
+
+```ts
+// Example: sign-and-call pattern
+const payload = {
+  method: 'payments.initiate',
+  nonce: crypto.randomUUID(),
+  iat: Math.floor(Date.now() / 1000),
+};
+const signature = await signPayload(keyHandle, payload);
+
+const receipt = await fetch(`${GLIDE_MCP_URL}/mcp/write`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Glide-Agent-Id': agentId,
+    'X-Glide-Signature': signature,
+    'X-Glide-Signed-Payload': btoa(JSON.stringify(payload)),
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'payments.initiate', arguments: { /* ... */ } },
+  }),
+}).then(r => r.json());
+```
+
+## Run it
+
+```bash
+# iOS Simulator
+npx expo run:ios
+
+# Android Emulator
+npx expo run:android
+```
+
+Expected output in Metro console:
+
+```
+[ows-demo] generating key pair for agent_mobile_demo_01 ...
+[ows-demo] public key: 3059301306072a86... (DER hex)
+[ows-demo] registered identity: identity_01hwzk4n...
+[ows-demo] signing test payload ...
+[ows-demo] signature: MEUCIQDy... (base64)
+[ows-demo] verify result: { valid: true, agentId: 'agent_mobile_demo_01' }
+```
+
+## Extend it
+
+- Add key rotation — generate a new key pair and call `agent-identity.rotate` to replace the registered public key.
+- Handle `OWSKeychain.errors.BIOMETRY_CHANGED` by prompting the user to re-authenticate and re-register.
+- Store the `keyHandle` in Expo SecureStore so it survives app restarts.
+- Build a React Native Storybook story for the biometric prompt to test on both platforms.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/embed-ows-react-native](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/embed-ows-react-native)
+
+## Reading list
+
+- [`@glideco/ows-react-native` package](/oss/packages/ows-react-native) — full API reference and platform compatibility matrix.
+- [`@glideco/agent-identity` package](/oss/packages/agent-identity) — server-side identity registration and key verification.
+- [Money-safety contracts](/oss/concepts/money-safety-contracts) — how client-side signatures fit into the F-rules.

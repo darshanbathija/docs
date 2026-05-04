@@ -142,7 +142,7 @@ These ARE the threat-model mitigations for the MCP gateway + grant issuance + to
 | ------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ----------------------------------------- |
 | **F1 — Server-side RPC verify**                   | `x402.pay` persists `on_chain_tx` from `serverFetchChainTx` (RPC), NEVER from facilitator receipt. | `apps/mcp/src/tools/x402-pay.ts`          |
 | **F2 — CAS-claim before broadcast**               | `agent_pending_payments` rows claimed via SQL `UPDATE ... RETURNING`; race losers skip.            | Migration 0041 + saga-reaper 0044         |
-| **F3 — Fresh-read tenant verification**           | `@glide/grant-wrapper` re-reads tenant from DB on every tool invocation.                           | `@glide/grant-wrapper`                    |
+| **F3 — Fresh-read tenant verification**           | `@glideco/grant-wrapper` re-reads tenant from DB on every tool invocation.                           | `@glideco/grant-wrapper`                    |
 | **F4 — Append-only `activity_log` trigger**       | UPDATE/DELETE/TRUNCATE rejected unless `app.dsar_context_id` session var set.                      | Migration 0042 trigger                    |
 | **F5 — Atomic policy_version on signer rotation** | `vault.rotateSigner` advances `policy_version` in same tx as on-chain rotation.                    | `apps/web/src/server/lib/agent-multisig/` |
 | **F7 — Sigil first-use-only**                     | URL-mode elicitation sigils CAS-claimed on first use; race losers reject.                          | `apps/mcp/src/step-up/`                   |

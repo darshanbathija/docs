@@ -107,4 +107,114 @@ Kick a payroll batch. Requires V2 payroll infra (Sprint 3-4); returns blocked_by
 
 ## Auth
 
-Caller's grant must include the `payments:initiate` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `payments:initiate` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "payroll.run",
+    "params": {
+      "schedule_id": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+      "idempotency_key": "payroll-june-2026-run-001"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('payroll.run', {
+  schedule_id: 'f6a7b8c9-d0e1-2345-fabc-456789012345',
+  idempotency_key: 'payroll-june-2026-run-001',
+});
+
+if (result.status === 'blocked_by_dep') {
+  console.warn('V2 payroll infra not yet available on this environment');
+} else {
+  console.log(`Batch ${result.batch_id} queued for ${result.recipient_count} recipients ($${(result.total_cents / 100).toFixed(2)} total)`);
+}
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("payroll.run", {
+    "schedule_id": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+    "idempotency_key": "payroll-june-2026-run-001",
+})
+
+print(result["status"], result["batch_id"], result["recipient_count"])
+```
+
+</CodeGroup>
+
+## Response examples
+
+Success — batch queued pending co-signer:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "batch_id": "a7b8c9d0-e1f2-3456-abcd-567890123456",
+    "recipient_count": 42,
+    "total_cents": 18750000,
+    "status": "pending_co_sign",
+    "enqueued_at": "2026-05-04T07:00:00Z"
+  }
+}
+```
+
+V2 payroll infra not yet available:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32006,
+    "message": "payroll.run depends on V2 payroll infra (Sprint 3-4); not yet shipped on this environment",
+    "data": { "reason_id": "payroll_v2_blocked" }
+  }
+}
+```
+
+Schedule belongs to a different tenant:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "payroll schedule f6a7b8c9-d0e1-2345-fabc-456789012345 is not owned by the calling tenant",
+    "data": { "reason_id": "schedule_tenant_mismatch" }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `schedule_id` not a valid UUID; schedule has zero active recipients (`schedule_empty`); schedule not found (`schedule_not_found`) | Verify the `schedule_id` exists and has at least one recipient |
+| `-32001` | Unauthorized | Schedule belongs to a different tenant (`schedule_tenant_mismatch`), or missing/expired grant token | Confirm the `schedule_id` was created under the same entity as the calling grant |
+| `-32002` | Policy denied | Grant missing `payments:initiate` scope | Issue a new grant with the required scope |
+| `-32006` | Vendor unavailable | V2 payroll infra not shipped on this environment (`payroll_v2_blocked`) | Wait for Sprint 3-4 rollout; monitor the changelog |
+| `-32004` | Rate limited | Too many batch starts in a short window | Back off by `retry_after_seconds` in the error `data` |
+| `-32603` | Internal error | Batch enqueue failed | Retry with the same `idempotency_key`; the call is idempotent |

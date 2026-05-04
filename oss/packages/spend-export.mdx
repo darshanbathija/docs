@@ -1,0 +1,118 @@
+---
+title: "@glideco/spend-export"
+description: "Typed receipt schema + CSV / JSON Lines / QBO IIF / Xero exports for agent spend. costillery-compatible with Glide augmentations."
+icon: "file-export"
+---
+
+Typed Zod schema for agent spend receipts, with four export targets: RFC 4180 CSV, JSON Lines, QuickBooks IIF, and Xero CSV. The schema adopts the costillery receipt shape and augments it with fields the agent-banking standards layer requires: `correlationId`, `agentId`, `grantId`, `taxJurisdiction`, `realizedGainUsdCents`.
+
+Zero runtime dependencies beyond `zod`.
+
+## Install
+
+```bash
+npm install @glideco/spend-export
+```
+
+[npmjs.com/package/@glideco/spend-export](https://www.npmjs.com/package/@glideco/spend-export)
+
+## Why a shared schema
+
+The agent-spend ecosystem fragmented early — every receipt-intel package chose its own field names, and two weeks later no two systems agreed on whether the fee field was `fee`, `feeAmount`, `fee_usd`, or omitted. This package pins the canonical column order, enforces ISO 4217 uppercase currency codes (lowercase `'usd'` breaks downstream tax-exporter cache keys), and validates MCC codes as exactly 4 ASCII digits (not `'ABCD'`). Callers that violate these constraints get a parse error at the boundary rather than a silent wrong export.
+
+The `realizedGainUsdCents` field is bounded to ±$100B per receipt. A stale price-oracle returning a nonsensical value would otherwise push phantom billion-dollar gains into the user's tax export without any visible warning.
+
+## Schema
+
+```ts
+import { parseSpendReceipt, type SpendReceipt } from '@glideco/spend-export';
+
+const receipt = parseSpendReceipt({
+  schemaVersion: '0.1.0',
+  id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  occurredAt: '2026-04-30T14:22:00Z',
+  amountCents: 4999,
+  currency: 'USD',
+  rail: 'x402',
+  counterparty: {
+    name: 'Anthropic API',
+    country: 'US',
+    taxIdType: 'ein',
+    taxIdValue: '12-3456789',
+  },
+  statementDescriptor: 'ANTHROPIC*API',
+  correlationId: 'mcp_audit_7f8e9d2a',
+  agentId: 'c1a2b3d4-e5f6-7890-abcd-ef1234567890',
+  grantId: 'd4e5f6a7-b8c9-0123-abcd-ef1234567890',
+  taxJurisdiction: 'US-CA',
+  realizedGainUsdCents: 0,
+});
+```
+
+## Exporting
+
+### CSV
+
+```ts
+import { exportCsv } from '@glideco/spend-export';
+
+const csv = exportCsv(receipts);
+// → RFC 4180 CSV with 16 canonical columns:
+//   id, occurredAt, amountCents, currency, rail, counterpartyName,
+//   counterpartyCountry, statementDescriptor, mcc, correlationId,
+//   agentId, grantId, taxJurisdiction, realizedGainUsdCents, txHash, memo
+```
+
+### QuickBooks IIF
+
+```ts
+import { exportQboIif } from '@glideco/spend-export';
+
+const iif = exportQboIif(receipts);
+// TRNS/SPL/ENDTRNS format. Imports under Banking → File →
+// Utilities → Import → IIF Files.
+// Glide-augmentation fields (correlationId, agentId, grantId)
+// carried in the MEMO column so they survive a plain-QBO import.
+```
+
+IIF fields containing tabs or newlines would inject phantom transaction rows. The exporter strips C0 control characters from every interpolated value before the tab-join.
+
+### Xero CSV
+
+```ts
+import { exportXeroCsv } from '@glideco/spend-export';
+
+const xero = exportXeroCsv(receipts);
+// Xero's column layout (*Date, *Amount, Payee, Description,
+// Reference, Cheque No.) — different from the canonical CSV.
+```
+
+### JSON Lines + aggregation
+
+```ts
+import {
+  exportJsonLines,
+  aggregateBy,
+  summarizeRealizedGains,
+} from '@glideco/spend-export';
+
+// One JSON receipt per line — for warehouse ingestion.
+const jsonl = exportJsonLines(receipts);
+
+// Group by agent, get count + total spend per agent.
+const byAgent = aggregateBy(receipts, (r) => r.agentId);
+
+// Crypto rail realized gain summary.
+const gains = summarizeRealizedGains(receipts);
+// → { totalCents: number, byRail: Map<string, number> }
+```
+
+## Rail vocabulary
+
+The `spendRailSchema` covers every Glide payment surface: `card-mastercard`, `card-visa`, `card-amex`, `card-bridge`, `x402`, `mpp-tempo`, `mpp-stellar`, `mpp-solana`, `mpp-lightning`, `stripe-spt`, `sepa`, `ach`, `wire`, `self-custody-evm`, `self-custody-svm`, `self-custody-xchain`.
+
+## Reading list
+
+- [Receipt schema](/docs/oss/standards/receipt) — the canonical Glide receipt shape this package serializes.
+- [`@glideco/smart-router`](/docs/oss/packages/smart-router) — the rail that each receipt is attributed to.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/spend-export)

@@ -1,0 +1,127 @@
+---
+title: "@glideco/parley-tiers"
+description: "Project smart-router rail candidates into turbo/fast/batch payment tiers. Pure function, no IO, additive to vanilla MPP."
+icon: "layer-group"
+---
+
+Projects `@glideco/smart-router` rail candidates into the parley-protocol three-tier vocabulary: `turbo`, `fast`, and `batch`. Agents can present these tiers in a chooser UI, pass a tier preference to `payments.initiate`, or ignore tiers entirely — backward-compatible with vanilla MPP.
+
+Pure functions, no IO.
+
+## Install
+
+```bash
+npm install @glideco/parley-tiers
+```
+
+[npmjs.com/package/@glideco/parley-tiers](https://www.npmjs.com/package/@glideco/parley-tiers)
+
+## Why tiers
+
+The smart-router returns a ranked list of rails sorted by fee. That list is the right output for the dispatcher, but it's the wrong surface for agents that need to give users a choice. "Tempo USDC — $0.05 — 800ms" and "Lightning via Spark — $0.01 — 200ms" are both valid options, but they mean different things to a user who's about to pay a contractor.
+
+Parley tiers give that list a name. The three tiers cover the practical range:
+
+- `turbo` — p95 latency ≤ 500ms, fee penalty acceptable.
+- `fast` — p95 latency ≤ 5s, lowest fee within that ceiling.
+- `batch` — p95 latency ≤ 10 min, cheapest path overall.
+
+Thresholds are overridable. A B2B SLA might define `fast` as ≤ 500ms rather than ≤ 5s.
+
+## API surface
+
+### `buildParleyTiers(candidates, thresholds?): ParleyTier[]`
+
+```ts
+import { buildParleyTiers } from '@glideco/parley-tiers';
+
+const tiers = buildParleyTiers([
+  {
+    rail: 'tempo:usdc',
+    displayName: 'Tempo USDC',
+    feeCents: 5,
+    latencyP95Ms: 800,
+    confidence: 0.98,
+    feeCurrency: 'USD',
+    meta: {},
+  },
+  {
+    rail: 'lightning:spark',
+    displayName: 'Lightning via Spark',
+    feeCents: 1,
+    latencyP95Ms: 200,
+    confidence: 0.92,
+    feeCurrency: 'USD',
+    meta: {},
+  },
+  {
+    rail: 'sepa:monerium',
+    displayName: 'SEPA via Monerium',
+    feeCents: 0,
+    latencyP95Ms: 86400000, // 24h — too slow even for batch → dropped
+    confidence: 0.99,
+    feeCurrency: 'USD',
+    meta: {},
+  },
+]);
+
+// Returns ParleyTier[] — one entry per eligible (rail, tier) pair.
+// Rails too slow for any tier are silently dropped.
+// tiers[0] → { tier: 'turbo', rail: 'lightning:spark', rank: 1, ... }
+// tiers[1] → { tier: 'fast',  rail: 'lightning:spark', rank: 1, ... }
+// tiers[2] → { tier: 'fast',  rail: 'tempo:usdc',      rank: 2, ... }
+```
+
+Within a tier, rails are sorted fee ASC → latency ASC → confidence DESC.
+
+### `pickPreferredTier(tiers, preference): ParleyTier | undefined`
+
+Returns the best candidate for the requested tier. If that tier has no candidates, falls back in the order:
+
+- `turbo` → `fast` → `batch`
+- `fast` → `turbo` → `batch`
+- `batch` → `fast` → `turbo`
+
+```ts
+import { buildParleyTiers, pickPreferredTier } from '@glideco/parley-tiers';
+
+const tiers = buildParleyTiers(candidates);
+const pick = pickPreferredTier(tiers, 'fast');
+
+if (pick) {
+  await payments.initiate({
+    rail: pick.rail,
+    feeCents: pick.feeCents,
+    meta: { parleyTier: pick.tier, parleyRank: pick.rank },
+  });
+}
+```
+
+### `classifyTier(latencyP95Ms, thresholds?): ParleyTierName | undefined`
+
+Classify a single latency value without building the full tier list. Returns `undefined` when the latency exceeds the batch ceiling.
+
+```ts
+import {
+  classifyTier,
+  DEFAULT_TIER_THRESHOLDS,
+} from '@glideco/parley-tiers';
+
+classifyTier(200);           // 'turbo'
+classifyTier(2000);          // 'fast'
+classifyTier(120_000);       // 'batch'
+classifyTier(900_000);       // undefined — too slow
+
+// Custom thresholds for a latency-sensitive B2B SLA
+classifyTier(800, { turboMaxMs: 300, fastMaxMs: 800, batchMaxMs: 60_000 });
+// → 'fast' (800ms is within the 800ms fast ceiling)
+```
+
+## Confidence flagging
+
+Rail candidates carry a `confidence` field (0–1) set by the smart-router from observed success rate. `buildParleyTiers` preserves confidence on each `ParleyTier`. Low-confidence rails will rank behind higher-confidence rails with equal fee + latency, and the caller can choose to display a warning to the user when `confidence < 0.8`.
+
+## Reading list
+
+- [`@glideco/smart-router`](/docs/oss/packages/smart-router) — produces the `RouteCandidate[]` list you convert to `RailCandidate[]` for this package.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/parley-tiers)

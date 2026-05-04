@@ -121,6 +121,137 @@ Per-chain, per-token balance of the agent vault. Amounts returned in both cents 
 }
 ```
 
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "accounts.balance",
+    "params": {
+      "vault_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "chain": "base",
+      "token": "USDC"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('accounts.balance', {
+  vault_id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  chain: 'base',
+  token: 'USDC',
+});
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("accounts.balance", {
+    "vault_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "chain": "base",
+    "token": "USDC",
+})
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Successful response — all chains when no filter applied:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "balances": [
+      {
+        "chain": "base",
+        "token": "USDC",
+        "amount_cents": 250000,
+        "native_unit_value": "2500.000000",
+        "usd_equivalent_cents": 250000
+      },
+      {
+        "chain": "sol",
+        "token": "USDC",
+        "amount_cents": 75000,
+        "native_unit_value": "750.000000",
+        "usd_equivalent_cents": 75000
+      },
+      {
+        "chain": "eth",
+        "token": "ETH",
+        "amount_cents": 312480,
+        "native_unit_value": "0.125000",
+        "usd_equivalent_cents": 312480
+      }
+    ],
+    "fetched_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+Error — vault ID not in grant audience:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "vault_id not in grant audience",
+    "data": {
+      "reason_id": "vault_not_in_audience"
+    }
+  }
+}
+```
+
+Error — missing or expired grant token:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "grant token missing or expired",
+    "data": {
+      "reason_id": "token_expired"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `chain` is not one of the allowed enum values, or `vault_id` is not a valid UUID | Validate against schema before call |
+| `-32000` | Unauthenticated | Missing `Authorization` header | Supply a valid `Bearer` token |
+| `-32001` | Unauthorized | Grant token expired or revoked | Refresh token via `agent.grant.refresh` |
+| `-32002` | Insufficient scope | Grant missing `accounts:read` scope | Issue new grant with `accounts:read` scope |
+| `-32603` | Internal error | Server-side error | Retry with backoff; contact support |
+
 ## Auth
 
-Caller's grant must include the `accounts:read` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `accounts:read` scope. Grants whose scope set is a superset of the required scope are accepted.

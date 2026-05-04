@@ -131,6 +131,128 @@ Catalog of installable skills from glide.co/skills. Each skill advertises its ru
 }
 ```
 
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "skills.list",
+    "params": {
+      "category_filter": "treasury"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('skills.list', {
+  category_filter: 'treasury',
+});
+
+console.log(result);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("skills.list", {
+    "category_filter": "treasury",
+})
+
+print(result)
+```
+
+</CodeGroup>
+
+## Response examples
+
+Successful response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "skills": [
+      {
+        "slug": "yield-optimizer",
+        "display_name": "Yield Optimizer",
+        "tagline": "Automatically allocates idle USDC to the highest-yield on-chain venue within policy",
+        "category": "treasury",
+        "runtime_compat": ["claude-desktop", "vertex"],
+        "dependencies_live": true,
+        "install_url": "https://glide.co/skills/yield-optimizer"
+      },
+      {
+        "slug": "ap-batch-pay",
+        "display_name": "AP Batch Pay",
+        "tagline": "Pay multiple suppliers in a single authorized batch with on-chain receipts",
+        "category": "treasury",
+        "runtime_compat": ["claude-desktop", "chatgpt-apps", "openclaw"],
+        "dependencies_live": true,
+        "install_url": "https://glide.co/skills/ap-batch-pay"
+      }
+    ],
+    "fetched_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+Error — invalid `category_filter` value:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32602,
+    "message": "category_filter must be one of: ap, treasury, consumer, payroll, x402, all",
+    "data": {
+      "reason_id": "invalid_enum_value"
+    }
+  }
+}
+```
+
+Error — missing or expired grant token:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32001,
+    "message": "grant token missing or expired",
+    "data": {
+      "reason_id": "token_expired"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `category_filter` is not one of the allowed enum values | Validate against schema before call |
+| `-32000` | Unauthenticated | Missing `Authorization` header | Supply a valid `Bearer` token |
+| `-32001` | Unauthorized | Grant token expired or revoked | Refresh token via `agent.grant.refresh` |
+| `-32002` | Insufficient scope | Grant missing `agents:read` scope | Issue new grant with `agents:read` scope |
+| `-32603` | Internal error | Server-side error | Retry with backoff; contact support |
+
 ## Auth
 
-Caller's grant must include the `agents:read` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `agents:read` scope. Grants whose scope set is a superset of the required scope are accepted.

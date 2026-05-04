@@ -1,6 +1,6 @@
 ---
 title: "x402.pay"
-description: "Pay an x402 micropayment endpoint. Server-side RPC verification of the on-chain tx is MANDATORY — the facilitator receipt is never trusted for money-safety fiel"
+description: "Pay an x402 micropayment endpoint with mandatory server-side RPC verification; the facilitator receipt is never trusted for money-safety fields."
 icon: "pen"
 ---
 
@@ -119,4 +119,119 @@ Pay an x402 micropayment endpoint. Server-side RPC verification of the on-chain 
 
 ## Auth
 
-Caller's grant must include the `x402:pay` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `x402:pay` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: x402-weather-20260504-001" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "x402.pay",
+    "params": {
+      "resource_url": "https://api.weatherdata.io/premium/forecast?lat=37.77&lon=-122.41",
+      "max_amount_cents": 10,
+      "chain": "base",
+      "token": "USDC",
+      "idempotency_key": "x402-weather-20260504-001"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call(
+  'x402.pay',
+  {
+    resource_url: 'https://api.weatherdata.io/premium/forecast?lat=37.77&lon=-122.41',
+    max_amount_cents: 10,
+    chain: 'base',
+    token: 'USDC',
+    idempotency_key: 'x402-weather-20260504-001',
+  },
+  { idempotencyKey: 'x402-weather-20260504-001' },
+);
+
+console.log('Paid', result.amount_cents_paid, 'cents, tx:', result.on_chain_tx);
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+result = client.call(
+    "x402.pay",
+    {
+        "resource_url": "https://api.weatherdata.io/premium/forecast?lat=37.77&lon=-122.41",
+        "max_amount_cents": 10,
+        "chain": "base",
+        "token": "USDC",
+        "idempotency_key": "x402-weather-20260504-001",
+    },
+    idempotency_key="x402-weather-20260504-001",
+)
+print(f"Paid {result['amount_cents_paid']} cents, tx: {result['on_chain_tx']}")
+```
+
+</CodeGroup>
+
+## Response examples
+
+**Success**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "payment_id": "9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d",
+    "amount_cents_paid": 5,
+    "on_chain_tx": "0x4a3b2c1d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b",
+    "resource_payload_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "paid_at": "2026-05-04T15:00:00Z"
+  }
+}
+```
+
+**Vendor unavailable — RPC could not verify tx**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32006,
+    "message": "RPC could not verify tx 0x4a3b... on base",
+    "data": {
+      "reason_id": "chain_tx_unverifiable"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | `reason_id` | Meaning |
+| ---- | ----------- | ------- |
+| `-32000` | `unauthenticated` | Bearer token missing or expired. |
+| `-32001` | `unauthorized` | Grant does not include `x402:pay`. |
+| `-32002` | `policy_denied` | Envelope denied the payment (amount, counterparty, velocity). |
+| `-32004` | `rate_limited` | Request rate exceeded. `data.retry_after_seconds` present. |
+| `-32006` | `chain_tx_unverifiable` | Server-side RPC returned no result for the facilitator-claimed tx. Do not retry without investigation — the funds may not have moved. |
+| `-32602` | `invalid_tx_hash_format` | RPC-verified tx hash format does not match the requested chain (EVM vs Solana mismatch). |
+| `-32602` | `facilitator_tx_hash_mismatch` | Facilitator's claimed tx hash differs from the RPC-verified value. |
+| `-32602` | `facilitator_amount_mismatch` | Facilitator claimed an amount different from the on-chain verified amount. |
+| `-32602` | `amount_over_max` | Verified on-chain amount exceeds `max_amount_cents`. |
+| `-32603` | `internal_error` | Transient server fault. Retry with the same idempotency key. |
+
+**Money-safety note:** `on_chain_tx` in the response is always the server-fetched RPC value, never the facilitator-supplied value. The facilitator receipt is used only for the x402 handshake; all money-safety fields are independently verified (PLAN.md F1).

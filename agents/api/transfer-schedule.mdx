@@ -139,4 +139,156 @@ Schedule a future-dated transfer. Envelope is evaluated at schedule time AND aga
 
 ## Auth
 
-Caller's grant must include the `payments:initiate` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `payments:initiate` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/write \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: sched-payroll-2026-05-15-acme" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "transfer.schedule",
+    "params": {
+      "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC"
+      },
+      "amount_cents": 250000,
+      "currency": "USD",
+      "execute_at": "2026-05-15T09:00:00Z",
+      "memo": "May payroll — Acme contractor",
+      "idempotency_key": "sched-payroll-2026-05-15-acme"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('transfer.schedule', {
+  counterparty: {
+    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    chain: 'base',
+    token: 'USDC',
+  },
+  amount_cents: 250000,
+  currency: 'USD',
+  execute_at: '2026-05-15T09:00:00Z',
+  memo: 'May payroll — Acme contractor',
+  idempotency_key: 'sched-payroll-2026-05-15-acme',
+});
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+result = client.call(
+    "transfer.schedule",
+    {
+        "counterparty": {
+            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+            "chain": "base",
+            "token": "USDC",
+        },
+        "amount_cents": 250000,
+        "currency": "USD",
+        "execute_at": "2026-05-15T09:00:00Z",
+        "memo": "May payroll — Acme contractor",
+        "idempotency_key": "sched-payroll-2026-05-15-acme",
+    },
+    idempotency_key="sched-payroll-2026-05-15-acme",
+)
+```
+
+</CodeGroup>
+
+## Response examples
+
+**Accepted (below step-up threshold)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "scheduled_transfer_id": "a3b4c5d6-e7f8-4a9b-8c0d-1e2f3a4b5c6d",
+    "execute_at": "2026-05-15T09:00:00Z",
+    "policy_version_at_schedule": 7,
+    "enqueued_at": "2026-05-04T14:22:33Z"
+  }
+}
+```
+
+**Step-up required (amount over envelope threshold)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32003,
+    "message": "scheduled transfer of 250000 cents requires step-up approval before it can be enqueued",
+    "data": {
+      "reason_id": "step_up_required",
+      "step_up_url": "https://app.glide.co/step-up/confirm?sigil=eyJhbGci..."
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | `reason_id` | Meaning |
+| ---- | ----------- | ------- |
+| `-32000` | `unauthenticated` | Bearer token missing or expired. |
+| `-32001` | `unauthorized` | Grant does not include `payments:initiate`. |
+| `-32002` | `policy_denied` | Envelope denied the scheduled amount (velocity, allowlist, daily cap, etc.). |
+| `-32003` | `step_up_required` | Amount exceeds the envelope's step-up threshold. `data.step_up_url` contains the biometric approval URL; re-submit with the redeemed sigil in `step_up_sigil`. |
+| `-32004` | `rate_limited` | Too many schedule requests. `data.retry_after_seconds` tells you when to retry. |
+| `-32602` | `execute_at_not_future` | `execute_at` is not strictly after the current time. |
+| `-32602` | `execute_at_beyond_horizon` | `execute_at` is more than 90 days from now. |
+| `-32603` | `internal_error` | Transient server fault. Retry with the same idempotency key. |
+
+## Step-up flow
+
+`transfer.schedule` enforces step-up **at schedule time** — the row is never enqueued until the principal has approved. This differs from a naive deferred `payments.initiate`; the execute-time worker also rechecks the then-current policy.
+
+1. Call `transfer.schedule` with the desired params. If the envelope's `step_up_amount_cents` threshold is exceeded, the server returns `-32003` with `data.step_up_url` and `data.reason_id = "step_up_required"`.
+2. Redirect the user to `step_up_url` (Privy biometric prompt). On success, Glide mints a one-time `sigil` and redirects back to your app's callback URL.
+3. Re-submit the original call, adding `step_up_sigil: "<sigil>"` to the params.
+4. The server redeems the sigil (single-use, bound to the exact amount + counterparty + execute_at), verifies the action matches what was approved, and enqueues the scheduled transfer.
+
+```ts TypeScript
+import { GlideClient, StepUpRequired } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const params = {
+  counterparty: { address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', chain: 'base', token: 'USDC' },
+  amount_cents: 500000,
+  currency: 'USD',
+  execute_at: '2026-05-15T09:00:00Z',
+  idempotency_key: 'sched-large-2026-05-15',
+};
+
+const result = await client.call('transfer.schedule', params);
+
+if (result instanceof StepUpRequired) {
+  // Redirect user; on callback, re-submit with sigil.
+  window.location.href = result.stepUpUrl;
+  return;
+}
+// result is TransferScheduleOutput
+console.log('Scheduled:', result.scheduled_transfer_id);
+```

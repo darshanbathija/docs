@@ -1,0 +1,120 @@
+---
+title: "@glideco/agent-identity"
+description: "did:key P-256 derivation from Apple App Attest and Android Key Attestation certificates. Pure functions, no IO."
+icon: "fingerprint"
+---
+
+`did:key` derivation and verification for Glide agents. Extracts the verified
+P-256 EC public key from an Apple App Attest `credCert` (or Android Key
+Attestation certificate) and encodes it as the W3C `did:key` form that
+downstream agent-payments protocols — AP2, ACP, x402 — expect.
+
+Every function in this package is pure. No network calls, no Node-specific
+side effects beyond `node:crypto` for PEM parsing (Node 18+, Bun, Deno).
+
+## Install
+
+```bash
+npm install @glideco/agent-identity
+```
+
+[npmjs.com/package/@glideco/agent-identity](https://www.npmjs.com/package/@glideco/agent-identity)
+
+## Why hardware-bound keys?
+
+Glide signs every grant with a per-grant `did:key` so external verifiers can
+resolve the agent's public key without making a Glide API call. The key
+material is bound to a hardware-attested credential — the `did:key` is
+_cryptographically derived_ from Apple App Attest's P-256 key, not
+client-asserted.
+
+The alternative — deriving the `did:key` from the `device_attestations.ed25519_pub`
+column — is explicitly rejected. That column carries no hardware binding.
+The P-256 key extracted by the App Attest verifier is bound by Apple's PKI
+to the device's Secure Enclave; Android Key Attestation provides the same
+guarantee via StrongBox. The `did:key` emitted here inherits both assurances.
+
+## Wire format
+
+`did:key` for a P-256 key is `did:key:z<base58btc(multicodec || 33-byte-compressed-pubkey)>`.
+
+| field      | bytes                                  |
+| ---------- | -------------------------------------- |
+| multibase  | `z` (base58btc)                        |
+| multicodec | `0x12 0x00` (varint of `0x1200`, P-256 secp256r1) |
+| pubkey     | 33 bytes SEC1 compressed               |
+
+SEC1 compressed format: byte `0x02` when Y is even, `0x03` when Y is odd,
+followed by the 32-byte big-endian X coordinate.
+
+## API surface
+
+```ts
+import {
+  pemToCompressedP256,    // PEM SPKI → SEC1 33-byte Uint8Array
+  compressedP256ToDidKey, // SEC1 33-byte → DidKey string
+  pemToDidKey,            // convenience: PEM → DidKey in one step
+  parseDidKeyP256,        // DidKey string → SEC1 33-byte Uint8Array
+  isValidDidKey,          // shape check (no exception on failure)
+  P256_MULTICODEC,        // Uint8Array([0x12, 0x00])
+  DID_KEY_PREFIX,         // 'did:key:z'
+} from '@glideco/agent-identity';
+```
+
+## Worked examples
+
+**From an App Attest credCert (most common path)**
+
+```ts
+import { pemToDidKey } from '@glideco/agent-identity';
+
+// `credCertPem` is the PEM-encoded SPKI returned by the App Attest
+// verifier after signature + nonce checks pass.
+const did = pemToDidKey(credCertPem);
+// → 'did:key:zDnaeYr8LMXDy6dP3bP7GrTiykU3zYoLWqNYFakXwpBdnU3m'
+
+// Attach the did to the grant before signing.
+await db.update(grants).set({ agentDid: did }).where(eq(grants.id, grantId));
+```
+
+**Round-trip: encode then decode**
+
+```ts
+import { compressedP256ToDidKey, parseDidKeyP256 } from '@glideco/agent-identity';
+
+// Encode a SEC1 33-byte pubkey you already have.
+const did = compressedP256ToDidKey(compressed33Bytes);
+
+// Later, a VC verifier decodes it back to verify a signature.
+const pubkeyBytes = parseDidKeyP256(did);
+// pubkeyBytes is the original 33-byte Uint8Array
+```
+
+**Guard clause in a Zod refinement**
+
+```ts
+import { z } from 'zod';
+import { isValidDidKey } from '@glideco/agent-identity';
+
+const didKeySchema = z
+  .string()
+  .refine(isValidDidKey, { message: 'invalid P-256 did:key' });
+```
+
+## Error handling
+
+All functions throw `Error` with a message that identifies the failure point:
+`pemToCompressedP256` throws on non-P-256 curves or malformed PEM;
+`compressedP256ToDidKey` throws on wrong-length or invalid SEC1 prefix;
+`parseDidKeyP256` throws on wrong multicodec or bad base58btc. `isValidDidKey`
+swallows these and returns `false` — use it at API boundaries where you want
+a boolean gate rather than exception propagation.
+
+## Reading list
+
+- [W3C DID Core v1.0](https://www.w3.org/TR/did-core/)
+- [did:key v0.7](https://w3c-ccg.github.io/did-method-key/)
+- [Multicodec table](https://github.com/multiformats/multicodec/blob/master/table.csv)
+- [Apple App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity)
+- [`@glideco/kya-vc`](/docs/oss/packages/kya-vc) — issues W3C VCs anchored to the `did:key` this package produces.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/agent-identity)

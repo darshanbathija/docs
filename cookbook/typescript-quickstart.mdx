@@ -1,0 +1,137 @@
+---
+title: "TypeScript quickstart"
+description: "Thin TS wrapper around the MCP gateway. Clone, install, set env, `pnpm dev` — streaming tool calls in under 10 minutes."
+icon: "code"
+---
+
+This recipe stands up a minimal TypeScript project that authenticates against the Glide MCP gateway, calls `accounts.balance`, and prints the parsed response. The wrapper uses `fetch` with a typed JSON-RPC helper — no heavy SDK required. Audience: TypeScript backend engineers who want a runnable baseline before building their agent logic.
+
+## Prerequisites
+
+- Node 22+ and pnpm.
+- Glide running locally per the [main quickstart](/oss/quickstart), or access to a hosted instance.
+- `MCP_TOKEN_VERIFIER_DEV_SECRET` set in your shell (or in the repo `.env`).
+
+## Steps
+
+### 1. Clone the example
+
+```bash
+git clone https://github.com/darshanbathija/axtior-neobank.git
+cd axtior-neobank/examples/typescript-quickstart
+```
+
+### 2. Install dependencies
+
+```bash
+pnpm install
+```
+
+The example only needs two direct dependencies: `jose` for JWT signing and `zod` for runtime receipt validation.
+
+### 3. Set environment variables
+
+Copy the example env file and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# .env
+GLIDE_MCP_URL=http://localhost:8787
+GLIDE_DEV_SECRET=your_32_byte_hex_secret_here
+GLIDE_AGENT_ID=agent_ts_demo
+GLIDE_ACCOUNT_ID=acc_demo_01
+```
+
+If you have a production Ory endpoint instead of a dev secret, set `GLIDE_TOKEN_URL` and `GLIDE_CLIENT_ID` / `GLIDE_CLIENT_SECRET` — `src/auth.ts` detects which path to use.
+
+### 4. Review the auth helper
+
+`src/auth.ts` mints a short-lived HMAC-SHA256 JWT for dev, or does `client_credentials` against Ory for production. The resulting token is stored in module scope with auto-refresh 60 seconds before expiry.
+
+```ts
+// src/auth.ts (excerpt)
+import { SignJWT } from 'jose';
+
+export async function getToken(): Promise<string> {
+  const secret = new TextEncoder().encode(process.env.GLIDE_DEV_SECRET!);
+  return new SignJWT({ sub: process.env.GLIDE_AGENT_ID! })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setAudience('glide-mcp')
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(secret);
+}
+```
+
+### 5. Review the RPC helper
+
+`src/rpc.ts` is a typed wrapper around a single `fetch` call. It throws on JSON-RPC errors with the error code and data attached so callers can distinguish policy rejections (`-32003`) from network errors.
+
+```ts
+// src/rpc.ts (excerpt)
+export async function call<T>(
+  endpoint: 'read' | 'write' | 'treasury',
+  method: string,
+  params: Record<string, unknown>,
+): Promise<T> {
+  const token = await getToken();
+  const res = await fetch(`${process.env.GLIDE_MCP_URL}/mcp/${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: crypto.randomUUID(), method: 'tools/call', params: { name: method, arguments: params } }),
+  });
+  const body = await res.json();
+  if (body.error) throw Object.assign(new Error(body.error.message), { code: body.error.code, data: body.error.data });
+  return body.result as T;
+}
+```
+
+### 6. Run the example
+
+```bash
+pnpm dev
+```
+
+`src/main.ts` calls `accounts.balance`, prints the balance, then calls `payments.initiate` with a $1.00 test payment to a sandbox address.
+
+## Run it
+
+```bash
+pnpm dev
+```
+
+Expected output:
+
+```
+[glide-ts] gateway ok
+[glide-ts] balance: $1,000.00 USDC (acc_demo_01)
+[glide-ts] payment initiated: rcpt_01hwzk4n3mbt6c9a5vzd7qp2xr
+[glide-ts] receipt.status: completed
+[glide-ts] receipt.txHash: 0xabc...def (chain: base)
+```
+
+## Extend it
+
+- Replace `src/main.ts` with an Express server that exposes a `/pay` endpoint — the RPC helper is already reusable.
+- Swap the dev HMAC auth for production Ory `client_credentials` by setting `GLIDE_TOKEN_URL` in `.env`.
+- Add a `zod` schema on `receipt` and log a structured event to Datadog on each payment.
+- Chain `audit.stream` after `payments.initiate` to confirm event delivery before returning to the caller.
+- Move the token refresh logic to an Inngest function for long-running agent processes.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/typescript-quickstart](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/typescript-quickstart)
+
+## Reading list
+
+- [Agent platform quickstart](/oss/headless/quickstart) — full `apps/mcp` bring-up, three endpoint scopes, step-up flow.
+- [Tool reference](/oss/headless/tool-reference) — input/output schemas for all 22 tools.
+- [Receipt schema](/oss/standards/receipt) — every field and its semantics.
+- [OAuth flow](/oss/headless/oauth-flow) — production JWT issuance via Ory Hydra.
+- [API clients reference](/agents/api/index) — hosted Glide client options.

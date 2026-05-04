@@ -1,6 +1,6 @@
 ---
 title: "AgentPolicyEnvelope (draft)"
-description: "13-axis policy envelope evaluated by @glide/policy-engine on every agent tool call."
+description: "14-axis policy envelope evaluated by @glideco/policy-engine on every agent tool call."
 icon: 'shield'
 ---
 
@@ -10,7 +10,7 @@ The policy envelope is the multisig-governed permission boundary every agent ope
 
 [`https://glide.co/schemas/agent-banking/v1/agent-policy-envelope.json`](https://glide.co/schemas/agent-banking/v1/agent-policy-envelope.json)
 
-## 13 axes
+## 14 axes
 
 The envelope captures three categories of constraint:
 
@@ -51,10 +51,10 @@ The envelope captures three categories of constraint:
 
 Per the Headless v1 Privy spike (`docs/designs/privy-policy-spike.md`):
 
-- **EVM:** all 13 axes enforce on Privy programmable signing policy NATIVELY. `per_tx_max`, `counterparty_allowlist`, `time_window`, `daily_cap`, `velocity_caps` all native.
+- **EVM:** all 14 axes enforce on Privy programmable signing policy NATIVELY. `per_tx_max`, `counterparty_allowlist`, `time_window`, `daily_cap`, `velocity_caps` all native.
 - **Solana:** `per_tx_max`, `counterparty_allowlist`, `time_window` enforce natively. Stateful aggregation (`daily_cap`, `velocity_caps`) lives in the router Redis layer.
 
-The `@glide/policy-engine` is chain-agnostic — `evaluate()` is pure-function and returns ALLOW/DENY with reason codes. The caller (Privy native or router Redis) chooses where to enforce.
+The `@glideco/policy-engine` is chain-agnostic — `evaluate()` is pure-function and returns ALLOW/DENY with reason codes. The caller (Privy native or router Redis) chooses where to enforce.
 
 ## Example
 

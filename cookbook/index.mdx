@@ -1,0 +1,55 @@
+---
+title: "Cookbook"
+description: "End-to-end recipes — copy, paste, extend. Each links to a runnable mini-project."
+icon: "book"
+---
+
+Each recipe is a self-contained mini-project you can clone and run in under 15 minutes. No toy examples — every code block reflects how the relevant path works in production.
+
+<CardGroup cols={2}>
+  <Card title="curl quickstart" icon="terminal" href="/cookbook/curl-quickstart">
+    Bare HTTP. No SDK. Five minutes to your first signed call and receipt.
+  </Card>
+  <Card title="TypeScript quickstart" icon="code" href="/cookbook/typescript-quickstart">
+    Thin TS wrapper around the MCP gateway. `pnpm dev` → streaming tool calls.
+  </Card>
+  <Card title="Python quickstart" icon="code" href="/cookbook/python-quickstart">
+    Python httpx wrapper. `python src/main.py` → parsed receipt in stdout.
+  </Card>
+  <Card title="Agent pays vendor" icon="cart-shopping" href="/cookbook/agent-pays-vendor">
+    Full lifecycle hero recipe. Policy envelope → grant → payment → receipt → audit stream.
+  </Card>
+  <Card title="Build a connector" icon="plug" href="/cookbook/build-a-connector">
+    Scaffold, implement, and test a new connector from scratch (Stripe-shaped clone).
+  </Card>
+  <Card title="Build a skill" icon="robot" href="/cookbook/build-a-skill">
+    Write a `SkillManifest`, consent flow, and entry point. Full smoke test included.
+  </Card>
+  <Card title="Embed OWS React Native" icon="mobile-screen" href="/cookbook/embed-ows-react-native">
+    iOS Secure Enclave + Android StrongBox key generation and sign-and-verify in a mobile app.
+  </Card>
+  <Card title="x402 paid API" icon="coins" href="/cookbook/x402-paid-api">
+    Pay-per-call API using `@glideco/x402-facilitator`. Server verifies on-chain; client pays and calls.
+  </Card>
+</CardGroup>
+
+## Picking your first recipe
+
+Not sure where to start? Pick by role:
+
+<CardGroup cols={3}>
+  <Card title="Backend self-hoster" icon="server">
+    Start with [curl quickstart](/cookbook/curl-quickstart) to understand the wire format,
+    then [build a connector](/cookbook/build-a-connector) to plug in your own banking rails.
+  </Card>
+  <Card title="Agent author" icon="robot">
+    Start with [TypeScript quickstart](/cookbook/typescript-quickstart) to confirm the
+    MCP gateway is reachable, then [agent pays vendor](/cookbook/agent-pays-vendor) for
+    the full policy-envelope-to-receipt lifecycle.
+  </Card>
+  <Card title="Contributor" icon="code-branch">
+    Start with [build a skill](/cookbook/build-a-skill) — it walks the same scaffold
+    pattern used by every package in the OSS Cathedral. Connector authors should read
+    [build a connector](/cookbook/build-a-connector) instead.
+  </Card>
+</CardGroup>

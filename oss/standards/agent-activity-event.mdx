@@ -1,0 +1,142 @@
+---
+title: "AgentActivityEvent (draft)"
+description: "Append-only audit event emitted after every MCP tool call. Consumed by the Trust Console, audit:stream subscribers, and ops dashboards."
+icon: 'scroll'
+---
+
+Every MCP tool call that completes — whether allowed, denied, or escalated — writes exactly one `AgentActivityEvent` row to `activity_log` (via the agent-platform columns added by migration 0042) via a Postgres trigger (the F4 IRON RULE: no direct INSERT path exists outside the trigger). Operators cannot delete or update rows; the table is append-only by design. The Trust Console tails this table in real time; the `audit:stream` MCP scope surfaces a read-only window of these events — the agent-event projection — to authorized agent runtimes.
+
+## Canonical URL
+
+[`https://glide.co/schemas/agent-banking/v1/agent-activity-event.json`](https://glide.co/schemas/agent-banking/v1/agent-activity-event.json)
+
+## Required fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `eventType` | `string` (1–64 chars) | Free-text event-kind label retained for backward compat with the original `/draft/` placeholder shape. New producers SHOULD also set `eventKind`. If both are present they MUST match. |
+| `timestamp` | `isoDateTimeUtc` | When the event occurred (UTC, `Z` suffix required). Server-stamped at the producer — the trigger never trusts a clock value supplied by an agent runtime. |
+| `agentId` | `string` (1–128 chars) | `agent_principal_id` of the acting agent. UUIDv4 in production; the looser `string` type keeps backward compat with placeholder draft data and operator-emitted events. |
+
+## Optional fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schemaVersion` | `'v1'` | Locks the event to the v1 schema. Absence is treated as v1 by consumers; a non-`'v1'` value MUST be refused at ingest. |
+| `eventKind` | `agentActivityEventKind` | Closed enum (see below). Preferred over `eventType` for new producers. Unknown values drop the event at ingest — don't emit values outside the enum. |
+| `eventId` | `uuidV4` | Unique identifier for this event row. Consumers de-duplicate on this. Older streams used the DB row `id`; new producers SHOULD always set it. |
+| `principalId` | `uuidV4 \| null` | Human principal whose vault is being acted on. Null for system-emitted events (kill-switch, scheduled jobs). |
+| `vaultId` | `uuidV4 \| null` | Vault the action targets. Together with `principalId` forms the RFC 8707 audience binding. Null for system events not tied to a specific vault. |
+| `grantId` | `uuidV4 \| null` | JTI of the grant that authorized this action. Null for events not tied to a grant (e.g. operator-initiated kill-switch). |
+| `toolCallId` | `uuidV4 \| null` | ID of the MCP tool call this event describes. Null for non-tool-call events (e.g. `consent_granted`). |
+| `summary` | `string` (1–280 chars) | Human-readable one-line summary for the Trust Console list row. Plain text, no markdown, no PII unless the principal already has access to it. |
+| `extra` | `object` | Open-ended bag for kind-specific fields (risk verdict reason text, anomaly score, etc.). Producers MUST keep this under 4 kB. Consumers MUST treat unknown keys as opaque. Allows event-shape evolution without bumping `schemaVersion`. |
+
+### `eventKind` vocabulary
+
+| Value | When emitted |
+| --- | --- |
+| `tool_call` | Any MCP tool completes (allowed or denied). |
+| `reasoning_step` | Agent runtime emits a reasoning trace to the Trust Console (opt-in). |
+| `risk_verdict` | Policy engine produces a verdict (`allow` / `allow_with_step_up` / `deny`). |
+| `anomaly_detected` | `@glideco/anomaly` heuristics fire on a tool call. |
+| `consent_prompt` | Step-up auth prompt sent to the principal. |
+| `consent_granted` | Principal completed the step-up. |
+| `consent_denied` | Principal declined or the prompt timed out. |
+| `step_up_required` | Policy engine flipped verdict to `allow_with_step_up`. |
+| `step_up_completed` | Step-up sigil consumed; execution proceeds. |
+| `policy_violation` | Tool call exceeded a hard cap or counterparty allowlist gate. |
+| `grant_issued` | OAuth AS issued a new grant. |
+| `grant_revoked` | A grant was revoked (operator or principal action). |
+| `kill_switch_triggered` | Forensic kill-switch fired for an agent or vault. |
+
+## Lifecycle
+
+`AgentActivityEvent` rows are written by a Postgres trigger on the `activity_log` table — not by application code. This is the F4 IRON RULE: no direct INSERT path exists, and there is no UPDATE or DELETE path for any consumer.
+
+**When emitted:** on every MCP tool call commit (including denied calls — the row captures the denial). Non-tool-call events (`consent_granted`, `kill_switch_triggered`, etc.) are emitted by the corresponding server-side handlers via the same trigger path.
+
+**Who consumes:**
+- **Trust Console UI** — tails the table via a tRPC subscription with per-principal row-level security.
+- **`audit:stream` MCP scope** — exposes a read-only window to authorized agent runtimes. Scoped to the calling grant's `vaultId`; cross-vault reads are refused.
+- **Ops dashboards** — query `activity_log` directly (read-only DB role), filtering on `agent_principal_id IS NOT NULL`.
+
+**Retention:** the `activity_log` table is append-only with no TTL at v1. Row-level security ensures each principal can only read their own events. Future versions may introduce archival tiers (see `@glideco/compliance-export`).
+
+## Example
+
+```ts
+import { z } from 'zod';
+
+// AgentActivityEvent is the JSON Schema shape; in TypeScript use the
+// @glideco/schemas package for runtime validation.
+const AgentActivityEvent = z.object({
+  schemaVersion: z.literal('v1').optional(),
+  eventType: z.string().min(1).max(64),
+  eventKind: z.enum([
+    'tool_call', 'reasoning_step', 'risk_verdict', 'anomaly_detected',
+    'consent_prompt', 'consent_granted', 'consent_denied',
+    'step_up_required', 'step_up_completed', 'policy_violation',
+    'grant_issued', 'grant_revoked', 'kill_switch_triggered',
+  ]).optional(),
+  eventId: z.string().uuid().optional(),
+  timestamp: z.string().datetime(),
+  agentId: z.string().min(1).max(128),
+  principalId: z.string().uuid().nullable().optional(),
+  vaultId: z.string().uuid().nullable().optional(),
+  grantId: z.string().uuid().nullable().optional(),
+  toolCallId: z.string().uuid().nullable().optional(),
+  summary: z.string().min(1).max(280).optional(),
+  extra: z.record(z.unknown()).default({}),
+});
+
+const event = AgentActivityEvent.parse({
+  schemaVersion: 'v1',
+  eventType: 'tool_call',
+  eventKind: 'tool_call',
+  eventId: '11111111-1111-4111-8111-111111111111',
+  timestamp: '2026-05-04T12:00:00.000Z',
+  agentId: '22222222-2222-4222-8222-222222222222',
+  principalId: '33333333-3333-4333-8333-333333333333',
+  vaultId: '44444444-4444-4444-8444-444444444444',
+  grantId: '55555555-5555-4555-8555-555555555555',
+  toolCallId: '66666666-6666-4666-8666-666666666666',
+  summary: 'Initiated $250.00 USDC payment via payments.initiate',
+  extra: { risk_verdict: 'allow', rail: 'usdc-base' },
+});
+```
+
+## Validation
+
+The event is validated three ways:
+
+1. **At write time** by the Postgres trigger — the trigger schema-checks required fields before inserting. Events that fail the check are rejected; the calling transaction rolls back.
+2. **At build time** via `scripts/validate-manifests.mjs`:
+
+   ```bash
+   pnpm --filter '@glideco/schemas' validate-events
+   ```
+
+3. **Against the published JSON Schema** for consumer-side validation:
+
+   ```bash
+   npx ajv-cli validate \
+     -s https://glide.co/schemas/agent-banking/v1/agent-activity-event.json \
+     -d ./my-event.json
+   ```
+
+## Common pitfalls
+
+- **Setting `eventKind` but not `eventType`.** The schema marks `eventType` as required for backward compat. Both fields must be set and must match.
+- **Omitting `eventId` on new producers.** Consumers de-duplicate on `eventId`. Without it, retried deliveries create duplicate Trust Console rows.
+- **Passing a non-UTC `timestamp`.** The `isoDateTimeUtc` type requires the `Z` suffix. `+00:00` offset strings fail schema validation and are rejected at ingest.
+- **Emitting an `eventKind` value outside the closed enum.** Unknown values are dropped at ingest without error. The enum is CODEOWNERS-protected — new values require a schema migration.
+- **Storing PII in `summary`.** The `summary` field renders in the Trust Console list row, which may be visible to support staff. Keep it to action + amount + rail — no email addresses, phone numbers, or wallet addresses.
+
+## Reading list
+
+- [AgentPolicyEnvelope](/docs/oss/standards/agent-policy-envelope) — the envelope that produced the `risk_verdict` captured in `extra`.
+- [Receipt](/docs/oss/standards/receipt) — the companion write-side record for money-touching calls.
+- [Grant](/docs/oss/standards/grant) — the `grantId` / `jti` this event references.
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — F4 IRON RULE that makes this table append-only.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/apps/web/public/schemas/agent-banking/v1/agent-activity-event.json)

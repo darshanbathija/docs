@@ -154,4 +154,158 @@ Move funds between yield vaults (Aave/Morpho/Kamino/idle) within the envelope. B
 
 ## Auth
 
-Caller's grant must include the `treasury:yield-allocate` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `treasury:yield-allocate` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/treasury \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: yield-rebalance-20260504-001" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "yield.allocate",
+    "params": {
+      "from_protocol": "idle",
+      "to_protocol": "aave",
+      "chain": "base",
+      "token": "USDC",
+      "amount_cents": 500000,
+      "min_apr_bps": 350,
+      "idempotency_key": "yield-rebalance-20260504-001"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient, StepUpRequired } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call(
+  'yield.allocate',
+  {
+    from_protocol: 'idle',
+    to_protocol: 'aave',
+    chain: 'base',
+    token: 'USDC',
+    amount_cents: 500000,
+    min_apr_bps: 350,
+    idempotency_key: 'yield-rebalance-20260504-001',
+  },
+  { idempotencyKey: 'yield-rebalance-20260504-001' },
+);
+
+if (result instanceof StepUpRequired) {
+  // Amount exceeded step-up threshold; redirect for approval.
+  window.location.href = result.stepUpUrl;
+  return;
+}
+console.log('Allocation enqueued:', result.allocation_id);
+```
+
+```python Python
+from glide_client import GlideClient, StepUpRequired
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+result = client.call(
+    "yield.allocate",
+    {
+        "from_protocol": "idle",
+        "to_protocol": "aave",
+        "chain": "base",
+        "token": "USDC",
+        "amount_cents": 500000,
+        "min_apr_bps": 350,
+        "idempotency_key": "yield-rebalance-20260504-001",
+    },
+    idempotency_key="yield-rebalance-20260504-001",
+)
+if isinstance(result, StepUpRequired):
+    print("Step-up needed:", result.step_up_url)
+else:
+    print("Allocation enqueued:", result["allocation_id"])
+```
+
+</CodeGroup>
+
+## Response examples
+
+**Success**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "allocation_id": "c1d2e3f4-a5b6-4789-8012-345678fedcba",
+    "from_protocol": "idle",
+    "to_protocol": "aave",
+    "amount_cents": 500000,
+    "enqueued_at": "2026-05-04T15:30:00Z",
+    "policy_version": 9
+  }
+}
+```
+
+**Step-up required (amount over envelope threshold)**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32003,
+    "message": "yield move of 500000¢ requires step-up",
+    "data": {
+      "reason_id": "step_up_required",
+      "step_up_url": "https://app.glide.co/step-up/confirm?sigil=eyJhbGci..."
+    }
+  }
+}
+```
+
+**V3 yield infrastructure not yet available**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32006,
+    "message": "yield.allocate depends on V3 DeFi yield infra (Bucket 1.8 / 4.4); not yet shipped",
+    "data": {
+      "reason_id": "yield_v3_blocked"
+    }
+  }
+}
+```
+
+## Errors
+
+| Code | `reason_id` | Meaning |
+| ---- | ----------- | ------- |
+| `-32000` | `unauthenticated` | Bearer token missing or expired. |
+| `-32001` | `unauthorized` | Grant does not include `treasury:yield-allocate`. |
+| `-32002` | `policy_denied` | Envelope denied the allocation (velocity, protocol not in allowlist, daily cap). |
+| `-32003` | `step_up_required` | Amount exceeds the envelope's `step_up_amount_cents`. `data.step_up_url` is the biometric approval URL. |
+| `-32004` | `rate_limited` | Too many allocation requests. `data.retry_after_seconds` present. |
+| `-32006` | `yield_v3_blocked` | V3 DeFi yield infrastructure is not yet deployed. The tool is gated on Bucket 1.8 / 4.4. |
+| `-32602` | `same_protocol_noop` | `from_protocol` and `to_protocol` are identical — no-op. |
+| `-32603` | `internal_error` | Transient server fault. Retry with the same idempotency key. |
+
+## Step-up flow
+
+`yield.allocate` uses the **same envelope step-up threshold as `payments.initiate`** — step-up is not always required, only when the allocation amount exceeds the envelope's `step_up_amount_cents`.
+
+1. Call `yield.allocate` with your params. If the amount is below the threshold, the allocation is enqueued immediately and you receive a success response.
+2. If the amount is at or above the threshold, you receive `-32003` with `data.step_up_url`.
+3. Redirect the principal to `step_up_url`. On approval, Glide mints a one-time sigil for `reason: "yield_allocate"`.
+4. Re-submit the original call with `step_up_sigil: "<sigil>"` added to params. The server verifies the sigil is bound to `reason: "yield_allocate"` and has not been redeemed.
+
+Note: unlike `vault.rotateSigner`, the allocation row is enqueued **after** the sigil is redeemed in the same call — there is no separate proposal step.

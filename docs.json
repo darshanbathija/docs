@@ -127,6 +127,30 @@
         ]
       },
       {
+        "tab": "Cookbook",
+        "groups": [
+          {
+            "group": "Quickstart",
+            "pages": [
+              "cookbook/index",
+              "cookbook/curl-quickstart",
+              "cookbook/typescript-quickstart",
+              "cookbook/python-quickstart"
+            ]
+          },
+          {
+            "group": "Recipes",
+            "pages": [
+              "cookbook/agent-pays-vendor",
+              "cookbook/build-a-connector",
+              "cookbook/build-a-skill",
+              "cookbook/embed-ows-react-native",
+              "cookbook/x402-paid-api"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Business",
         "groups": [
           {
@@ -193,7 +217,30 @@
             "group": "Packages",
             "pages": [
               "oss/packages/anomaly",
-              "oss/packages/explainer"
+              "oss/packages/explainer",
+              "oss/packages/grant-wrapper",
+              "oss/packages/policy-engine",
+              "oss/packages/recovery",
+              "oss/packages/agent-events",
+              "oss/packages/schemas",
+              "oss/packages/secrets-scan",
+              "oss/packages/compliance-export",
+              "oss/packages/dsar",
+              "oss/packages/mpp-adapter",
+              "oss/packages/ap2-adapter",
+              "oss/packages/acp-merchant",
+              "oss/packages/ucp-profile",
+              "oss/packages/x402-facilitator",
+              "oss/packages/connectors-coinbase-x402",
+              "oss/packages/agent-identity",
+              "oss/packages/kya-vc",
+              "oss/packages/kms-signer",
+              "oss/packages/ows-react-native",
+              "oss/packages/smart-router",
+              "oss/packages/crosschain-bridge",
+              "oss/packages/a2a-resolver",
+              "oss/packages/spend-export",
+              "oss/packages/parley-tiers"
             ]
           },
           {
@@ -237,7 +284,11 @@
               "oss/standards/skill-manifest",
               "oss/standards/grant",
               "oss/standards/receipt",
-              "oss/standards/trust-tier"
+              "oss/standards/scoped-grant-claims",
+              "oss/standards/agent-activity-event",
+              "oss/standards/trust-tier",
+              "oss/standards/_types",
+              "oss/standards/lifecycle"
             ]
           },
           {

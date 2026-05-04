@@ -1,0 +1,128 @@
+---
+title: "Shared type primitives (_types)"
+description: "The $defs catalog referenced via $ref by every other agent-banking schema. Timestamps, IDs, money amounts, addresses, and closed-enum vocabularies."
+icon: 'shapes'
+---
+
+`_types.json` is the shared type dictionary for the entire `glide.co/schemas/agent-banking/v1/` vocabulary. No application data lives here — it is purely a `$defs` block. Every other schema in the set imports from it via `$ref: "_types.json#/$defs/<name>"`. This keeps the wire format self-consistent: when `uuidV4` gains a clarifying description, every schema that references it inherits the update in one place.
+
+## Canonical URL
+
+[`https://glide.co/schemas/agent-banking/v1/_types.json`](https://glide.co/schemas/agent-banking/v1/_types.json)
+
+## Type catalog
+
+### Scalar types
+
+| `$defs` key | Underlying type | Constraint summary | Reused across |
+| --- | --- | --- | --- |
+| `uuidV4` | `string` | RFC 4122 UUID (v1–v8 accepted; also accepts all-zero and all-F sentinels used by seed scripts). Lowercase recommended; the pattern accepts mixed-case. | `ScopedGrantClaims`, `AgentActivityEvent`, `Receipt`, `AgentPolicyEnvelope` |
+| `isoDateTimeUtc` | `string` | ISO 8601 / RFC 3339 instant in UTC. **`Z` suffix is REQUIRED.** Offsets like `+00:00` are rejected to keep the wire format unambiguous across tRPC, MCP, JWT, and Privy serialization boundaries. | `AgentActivityEvent.timestamp`, `AgentPolicyEnvelope.time_window_*`, `Receipt.timestamp` |
+| `unixSecondsPositive` | `integer` | Unix epoch seconds (UTC), strictly positive. Used for JWT `iat`/`nbf`/`exp` per RFC 7519 §2 `NumericDate`. | `ScopedGrantClaims.iat`, `nbf`, `exp` |
+| `amountCents` | `integer` | Money amount in minor units (USD cents). Non-negative; max is `Number.MAX_SAFE_INTEGER`. USDC has 6 decimals — Glide normalizes to 1e-2 USD = 1 cent in policy evaluation (see `lib/usdc-units.ts`). **Never use a float for money.** | `AgentPolicyEnvelope` caps, `Receipt.amount_cents` |
+| `nonNegativeInt` | `integer` | Non-negative integer, max `Number.MAX_SAFE_INTEGER`. | `ScopedGrantClaims.policy_version`, `AgentPolicyEnvelope.policy_version` |
+| `positiveInt` | `integer` | Strictly positive integer, max `Number.MAX_SAFE_INTEGER`. | Velocity caps in `AgentPolicyEnvelope` |
+
+### String-format types
+
+| `$defs` key | Format | Notes | Reused across |
+| --- | --- | --- | --- |
+| `currencyCode` | `string` (3–8 chars, `[A-Za-z][A-Za-z0-9]{2,7}`) | ISO 4217 alpha-3 fiat (`USD`, `EUR`) or stablecoin symbol (`USDC`, `PYUSD`). Case-insensitive on input; normalized to uppercase server-side. | `Receipt.currency`, `ConnectorManifest.currencies` |
+| `iso3166Alpha2` | `string` (`[A-Z]{2}`) | ISO 3166-1 alpha-2 country code, uppercase. | `AgentPolicyEnvelope.geo_allowlist`, `ConnectorManifest.regions` |
+| `regionCode` | `string` (`[A-Z]{2,8}`) | ISO 3166-1 alpha-2 OR a broader region tag (`EU`, `LATAM`, `APAC`, `GLOBAL`). Used where connector/skill region granularity is broader than per-country. | `ConnectorManifest.compliance.dataResidency` |
+| `ianaTimezone` | `string` (1–64 chars) | IANA tz database name (e.g. `America/New_York`, `UTC`). Loose pattern — the policy engine resolves via `Intl.DateTimeFormat` at evaluation time and fails closed on unknown zones. | `AgentPolicyEnvelope` (time-window helpers) |
+| `mccCode` | `string` (`[0-9]{4}`) | ISO 18245 Merchant Category Code: exactly 4 ASCII digits. `ABCD` is rejected (letters, not digits). | `AgentPolicyEnvelope.mcc_allowlist`, `mcc_blocklist` |
+| `hostname` | `string` (1–253 chars, RFC 1123) | DNS hostname — lowercase, no trailing dot, no scheme, no path. Used for egress-host allowlists; URLs are not valid here. | `ConnectorManifest.egressHosts` |
+| `httpsUrl` | `string` (URI, `^https://`) | Absolute `https://` URL. The `http:` scheme is rejected to prevent silent downgrade attacks on manifest links. Max 2048 chars. | `ConnectorManifest.homepage`, `changelogUrl` |
+| `kebabSlug` | `string` (`[a-z0-9][a-z0-9-]*`, 1–64 chars) | Lowercase kebab-case identifier. Shows up in URLs and package directory names. | `ConnectorManifest.slug`, `SkillManifest.skillId` |
+| `semver` | `string` (5–64 chars, SemVer 2.0.0) | Semantic Versioning 2.0.0 string. Build metadata and prerelease labels allowed. | `ConnectorManifest.packageVersion` |
+
+### Address types
+
+| `$defs` key | Format | Notes | Reused across |
+| --- | --- | --- | --- |
+| `evmAddress` | `string` (`^0x[0-9a-fA-F]{40}$`) | 0x-prefixed 20-byte Ethereum-style address. Mixed-case allowed; EIP-55 checksum is verified server-side, not in the schema. | `Receipt.counterparty_address`, `AgentPolicyEnvelope.counterparty_allowlist` |
+| `solanaAddress` | `string` (`[1-9A-HJ-NP-Za-km-z]{32,44}`) | Solana base58 public key. Base58 alphabet excludes `0`, `O`, `I`, `l`. | `Receipt.counterparty_address`, `AgentPolicyEnvelope.counterparty_allowlist` |
+| `chainAddress` | `evmAddress \| solanaAddress` | Union of the two address types. The accompanying `chain` field disambiguates which form applies. | Counterparty fields across schemas |
+| `txHash` | `string` (1–128 chars) | On-chain transaction identifier. EVM: 0x-prefixed 32-byte hex (66 chars). Solana: base58 signature (typically 87–88 chars). Server fetches and re-derives this from chain RPC — never trust a value passed in via a facilitator response body. | `Receipt.on_chain_tx` |
+
+### Closed-enum vocabularies
+
+| `$defs` key | Values | Notes |
+| --- | --- | --- |
+| `chainId` | `eth`, `base`, `arb`, `op`, `polygon`, `sol`, `tempo`, `stellar` | Supported EVM L1/L2, Solana, Machine Payments Protocol L1 (tempo), and Stellar (Soroban). `bsc` is deliberately excluded: USDC on BSC has 18 decimals vs 6 everywhere else, which would silently 10^12-underflow amount-in-cents math in policy evaluation. Re-enabling requires `lib/usdc-units.ts` to branch on chain first. |
+| `agentScope` | `accounts:read`, `agents:read`, `payments:initiate`, `payments:simulate`, `cards:manage`, `agent:budget:create`, `agent:budget:revoke`, `beneficiary:read`, `beneficiary:write`, `kyc:start`, `x402:pay`, `x402:receive`, `audit:stream`, `treasury:rotate-signer`, `treasury:yield-allocate` | Closed vocabulary for grant scopes. Adding a value is a CODEOWNERS-protected change — the policy-engine evaluator must understand the same vocabulary. Wildcard scopes (`treasury:*`) deferred to v1.5. |
+| `agentActivityEventKind` | `tool_call`, `reasoning_step`, `risk_verdict`, `anomaly_detected`, `consent_prompt`, `consent_granted`, `consent_denied`, `step_up_required`, `step_up_completed`, `policy_violation`, `grant_issued`, `grant_revoked`, `kill_switch_triggered` | Closed vocabulary for Trust Console event taxonomy. Producers MUST emit one of these; unknown values drop the event at ingest. |
+| `trustTier` | `community`, `verified`, `core` | Quality-based trust tier. `community` is off by default (requires explicit env-var unlock); `verified` ships enabled with per-tenant opt-in; `core` is Glide-maintained reference code. |
+| `riskVerdict` | `allow`, `allow_with_step_up`, `deny` | Policy-engine verdict. `allow_with_step_up` means step-up auth is required and has not yet been completed. |
+| `amlPosture` | `vendor-screened`, `pass-through`, `unscreened` | Vendor AML/sanctions posture. `unscreened` is only valid for community-tier mock connectors. |
+| `connectorCapability` | `orchestration`, `kyc`, `card`, `screening`, `chain-receipt`, `balance`, `auth`, `banking`, `qr-gateway`, `oauth-authorization-server`, `attestation`, `merkle-anchor`, `timelock-module`, `recovery` | Connector capability vocabulary. A capability NOT in this enum is rejected at registry boot — adding one requires a schema migration. |
+| `skillRuntime` | `claude-desktop`, `chatgpt-apps`, `vertex`, `openclaw`, `hermes` | Agent runtimes a skill targets. |
+| `skillCategory` | `ap`, `treasury`, `consumer`, `payroll`, `x402` | Skill categories surfaced in the catalog. |
+| `skillScope` | Strict subset of `agentScope` — excludes `agent:budget:create`, `agent:budget:revoke`, `treasury:rotate-signer` | Administrative scopes may only be granted via in-app admin actions, not via a skill manifest request. |
+
+## Note on `chainId` and the Zod source
+
+<Note>
+As of v1.0.x, the Zod source and the published JSON Schema are in sync for both `chainId` (8 values: `eth`, `base`, `arb`, `op`, `polygon`, `sol`, `tempo`, `stellar`) and `agentScope` (15 values). Any future axis additions begin in Zod and propagate to the JSON Schema in the next minor release per the versioning contract (new enum values are forward-compatible additions).
+</Note>
+
+## Example
+
+```ts
+import { z } from 'zod';
+
+// Types are re-exported from @glideco/schemas:
+import {
+  uuidSchema,
+  isoDateTimeSchema,
+  amountCentsSchema,
+  chainIdSchema,
+  currencyCodeSchema,
+} from '@glideco/schemas';
+
+// Use directly in your own schema:
+const MyPaymentRecord = z.object({
+  id: uuidSchema,
+  settledAt: isoDateTimeSchema,
+  amountCents: amountCentsSchema,
+  chain: chainIdSchema,
+  currency: currencyCodeSchema,
+});
+
+MyPaymentRecord.parse({
+  id: '11111111-1111-4111-8111-111111111111',
+  settledAt: '2026-05-04T12:00:00.000Z',
+  amountCents: 25000,   // $250.00
+  chain: 'base',
+  currency: 'USDC',
+});
+```
+
+## Validation
+
+Primitives in this file are not directly validated in isolation — they are referenced by other schemas. To validate a `$ref` chain against the canonical document:
+
+```bash
+npx ajv-cli validate \
+  -s https://glide.co/schemas/agent-banking/v1/agent-activity-event.json \
+  --ref https://glide.co/schemas/agent-banking/v1/_types.json \
+  -d ./my-event.json
+```
+
+Pass `--ref` for every schema that `$ref`s `_types.json` — AJV resolves `$ref` relative URIs from the `$id` of the referencing document, but some toolchains require explicit pre-loading.
+
+## Common pitfalls
+
+- **Using floats for `amountCents`.** The JSON Schema and Zod source both require `integer`. IEEE-754 floats lose precision above $90 trillion; passing `250.00` instead of `25000` will fail the integer assertion and also undercount by 100x.
+- **Using `+00:00` for `isoDateTimeUtc`.** The `Z` suffix is required. tRPC, MCP, JWT `iat`/`nbf`/`exp`, and Privy all use different serializers — the `Z`-only contract eliminates parser ambiguity at every boundary.
+- **Treating `chainId` as a CAIP-2 identifier.** The wire format uses Glide short-ids (`base`, not `eip155:8453`). Use `chainIdToCaip2()` / `caip2ToChainId()` from `@glideco/schemas` at protocol boundaries that speak CAIP-2 (x402, AP2, ACP).
+- **Comparing `chainAddress` values without normalizing case.** EVM addresses are case-insensitive (mixed-case is EIP-55 checksum); Solana addresses are case-sensitive base58. Use chain-aware comparison helpers, not raw string equality.
+- **Assuming `uuidV4` means strictly v4.** The name is historical; the pattern accepts UUID v1–v8 plus all-zero / all-F sentinels. UUIDv7 (used for time-ordered IDs in newer tables) is valid here.
+
+## Reading list
+
+- [ScopedGrantClaims](/docs/oss/standards/scoped-grant-claims) — heavy consumer of `uuidV4`, `unixSecondsPositive`, and `agentScope`.
+- [AgentActivityEvent](/docs/oss/standards/agent-activity-event) — uses `isoDateTimeUtc`, `uuidV4`, and `agentActivityEventKind`.
+- [ConnectorManifest](/docs/oss/standards/connector-manifest) — uses `trustTier`, `connectorCapability`, `currencyCode`, `regionCode`.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/apps/web/public/schemas/agent-banking/v1/_types.json)

@@ -154,4 +154,145 @@ Run the full policy envelope evaluation against a proposed payment. Returns the 
 
 ## Auth
 
-Caller's grant must include the `payments:simulate` scope. Grants with broader scopes (e.g. `*`) are accepted.
+Caller's grant must include the `payments:simulate` scope. Grants whose scope set is a superset of the required scope are accepted.
+
+## Request examples
+
+<CodeGroup>
+
+```bash curl
+curl -X POST https://mcp.glide.co/mcp/read \
+  -H "Authorization: Bearer $GLIDE_GRANT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "payments.simulate",
+    "params": {
+      "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC"
+      },
+      "amount_cents": 75000,
+      "currency": "USD",
+      "mcc": "7372"
+    }
+  }'
+```
+
+```ts TypeScript
+import { GlideClient } from './glide-client';
+
+const client = new GlideClient({ grantToken: process.env.GLIDE_GRANT_TOKEN! });
+
+const result = await client.call('payments.simulate', {
+  counterparty: {
+    address: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
+    chain: 'base',
+    token: 'USDC',
+  },
+  amount_cents: 75000,
+  currency: 'USD',
+  mcc: '7372',
+});
+
+if (result.verdict === 'deny') {
+  console.error('Payment would be denied:', result.reasons);
+} else if (result.verdict === 'allow_with_step_up') {
+  console.log('Payment requires step-up before initiating');
+} else {
+  console.log('Payment would be allowed — safe to call payments.initiate');
+}
+```
+
+```python Python
+from glide_client import GlideClient
+import os
+
+client = GlideClient(grant_token=os.environ["GLIDE_GRANT_TOKEN"])
+
+result = client.call("payments.simulate", {
+    "counterparty": {
+        "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+        "chain": "base",
+        "token": "USDC",
+    },
+    "amount_cents": 75000,
+    "currency": "USD",
+    "mcc": "7372",
+})
+
+print(result["verdict"], result["reasons"])
+```
+
+</CodeGroup>
+
+## Response examples
+
+Verdict — allowed:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "verdict": "allow",
+    "policy_version": 3,
+    "reasons": [],
+    "simulated_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+Verdict — step-up required (amount above threshold, otherwise allowed):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "verdict": "allow_with_step_up",
+    "policy_version": 3,
+    "reasons": [
+      {
+        "axis": "amount",
+        "reason_id": "step_up_threshold",
+        "message": "amount 750000 exceeds step_up_amount_cents 100000"
+      }
+    ],
+    "simulated_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+Verdict — denied (daily cap would be breached):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "verdict": "deny",
+    "policy_version": 3,
+    "reasons": [
+      {
+        "axis": "velocity",
+        "reason_id": "daily_cap_exceeded",
+        "message": "daily spend cap of 100000 cents would be exceeded; current spend 90000"
+      }
+    ],
+    "simulated_at": "2026-05-04T12:00:00Z"
+  }
+}
+```
+
+## Errors
+
+| Code | Name | Cause | Remediation |
+| --- | --- | --- | --- |
+| `-32600` | Invalid request | Malformed JSON-RPC envelope | Check `method`, `jsonrpc`, and `id` fields |
+| `-32602` | Invalid params | `counterparty.chain` not in enum, `currency` empty, or MCC not exactly 4 digits | Validate against the input schema before calling |
+| `-32001` | Unauthorized | Missing/expired grant token | Refresh via `agent.grant.refresh` |
+| `-32002` | Policy denied | Grant missing `payments:simulate` scope | Issue a new grant with the required scope |
+| `-32603` | Internal error | Envelope or velocity-context fetch failed | Retry — simulate has no side effects |

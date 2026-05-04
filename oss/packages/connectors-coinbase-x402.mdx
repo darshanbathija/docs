@@ -1,0 +1,171 @@
+---
+title: "@repo/connectors-coinbase-x402"
+description: "x402 receiver helpers + Coinbase CDP facilitator client. Drives the verify+settle flow for any RFC-compatible facilitator. F1 IRON RULE: txHash is the facilitator's claim, not verified fact."
+icon: "credit-card"
+---
+
+x402 payment protocol adapter with two surfaces. The receiver helpers build the
+HTTP 402 challenge body, decode the `X-PAYMENT` request header, and drive the
+full verify-then-settle flow against any RFC-compatible facilitator. The
+facilitator client (`CoinbaseFacilitator`) talks to the Coinbase Developer
+Platform's hosted x402 facilitator, or any self-hosted alternative that speaks
+the same `/verify` + `/settle` JSON-RPC.
+
+Per the OSS Cathedral plan §M2.5: every Glide account is x402-addressable by
+default. This package is what makes that true. The matching MCP tools
+(`x402.pay`, `x402.receive`) in `apps/mcp` consume this package's primitives.
+
+**F1 IRON RULE:** `SettleResponse.transaction` (the facilitator's returned tx
+hash) is the facilitator's claim, not an independently verified on-chain fact.
+Operators MUST perform a server-side RPC verification before persisting the hash
+to any audit row. This package exposes the facilitator's response verbatim and
+leaves RPC verification to the consumer. The reference implementation is
+`serverFetchChainTx` in the MCP `x402.pay` tool.
+
+## Install
+
+This package is workspace-internal (`@repo/connectors-coinbase-x402`). For
+standalone use, publish it under `@glideco/connector-coinbase-x402` using the
+connector publish script:
+
+```bash
+node scripts/publish-glide-connector.mjs coinbase-x402
+```
+
+## Receiver flow (Next.js route handler)
+
+The canonical pattern for exposing a Glide account as an x402 endpoint:
+
+```ts
+// apps/web/src/app/api/x402/[accountId]/route.ts
+import {
+  CoinbaseFacilitator,
+  buildChallengeBody,
+  handleX402Request,
+  type PaymentRequirements,
+} from '@repo/connectors-coinbase-x402';
+
+export async function POST(req: Request, { params }: { params: Promise<{ accountId: string }> }) {
+  const { accountId } = await params;
+
+  const requirements: PaymentRequirements = {
+    scheme: 'exact',
+    network: 'base',
+    maxAmountRequired: '1000000',           // 1 USDC (6 decimals)
+    resource: req.url,
+    description: 'Pay to unlock resource',
+    mimeType: 'application/json',
+    payTo: process.env.X402_DEFAULT_RECEIVE_ADDRESS!,
+    maxTimeoutSeconds: 60,
+    asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+  };
+
+  const facilitator = new CoinbaseFacilitator({
+    bearerToken: process.env.CDP_API_KEY_SECRET,
+  });
+
+  const result = await handleX402Request({
+    xPaymentHeader: req.headers.get('x-payment'),
+    accepts: [requirements],
+    facilitator,
+  });
+
+  if (result.kind === 'challenge') {
+    return new Response(JSON.stringify(result.body), { status: 402 });
+  }
+
+  // F1: independently verify the on-chain tx before writing any audit row
+  await rpcVerify(result.settle.transaction, requirements);
+  return Response.json({ ok: true, tx: result.settle.transaction });
+}
+```
+
+## ReceiverOutcome decision tree
+
+`handleX402Request` returns a discriminated union:
+
+```ts
+type ReceiverOutcome =
+  | {
+      kind: 'challenge';
+      body: X402ChallengeBody;
+      reason: 'no_header' | 'header_decode' | 'verify_failed' | 'settle_failed';
+      detail?: string;
+    }
+  | {
+      kind: 'settled';
+      settle: SettleResponse;
+    };
+```
+
+All failure cases return `kind: 'challenge'` with the appropriate `reason` and
+a `detail` string for logging. The caller emits a 402 with `body` as the JSON
+payload in all challenge cases.
+
+## Building a challenge manually
+
+If you need to issue a 402 without driving a full payment flow:
+
+```ts
+import { buildChallengeBody, encodeXPaymentHeader } from '@repo/connectors-coinbase-x402';
+
+// 402 response body
+const challengeBody = buildChallengeBody({
+  accepts: [requirements],
+  error: 'Previous payment verification failed',
+});
+
+// Encode a PaymentPayload into the X-PAYMENT header (client side)
+const xPaymentHeader = encodeXPaymentHeader({
+  x402Version: 1,
+  scheme: 'exact',
+  network: 'base',
+  payload: { signature: '0x…', authorization: { from, to, value, validAfter, validBefore, nonce } },
+});
+```
+
+## Self-hosted facilitator
+
+To run without a Coinbase dependency, point the client at any
+RFC-compatible facilitator:
+
+```bash
+X402_FACILITATOR_URL=https://my-facilitator.example.com
+```
+
+`CoinbaseFacilitator` calls the same `/verify` + `/settle` JSON-RPC contract
+against that base URL. The Glide-compliant facilitator (with Chainalysis
+screening) is in `@glideco/x402-facilitator`.
+
+## Egress surface
+
+Declared in the connector manifest (enforced by the egress-host CI gate):
+
+| Host | Purpose |
+| --- | --- |
+| `api.cdp.coinbase.com` | Coinbase Developer Platform auth + key APIs |
+| `x402.coinbase.com` | Coinbase-hosted x402 facilitator |
+| `facilitator.x402.io` | Fallback / community-hosted facilitator |
+
+No other host is reachable at runtime. A CI gate on egress hosts enforces this.
+
+## Supported networks
+
+The `PaymentRequirements.network` field accepts the x402 network enum:
+`base`, `base-sepolia`, `polygon`, `polygon-amoy`, `solana`, `solana-devnet`,
+`avalanche`, `abstract`, `sei`, and several others. See
+`PaymentRequirementsSchema` in `src/protocol.ts` for the full list.
+
+For EVM networks the payload uses EIP-712 `transferWithAuthorization`; for
+Solana the payload is a signed transaction blob. Both shapes are handled by the
+same `decodeXPaymentHeader` parser.
+
+## Reading list
+
+- [Money-safety contracts](/docs/oss/concepts/money-safety-contracts) — F1
+  server-side RPC verification requirement.
+- [`@glideco/x402-facilitator`](/docs/oss/packages/x402-facilitator) — the
+  Chainalysis-baked facilitator this connector can delegate to.
+- [ConnectorManifest standard](/docs/oss/standards/connector-manifest) — how
+  the egress-host contract is declared.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/connectors/coinbase-x402)

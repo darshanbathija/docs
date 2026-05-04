@@ -1,0 +1,107 @@
+---
+title: "@glideco/crosschain-bridge"
+description: "Quote + dispatch shape layer for Squid Router and Across Protocol. Bridge route classification, quote aggregation, glide-internal fast path."
+icon: "bridge"
+---
+
+Shape layer for cross-chain bridge operations: quote request/response types, bridge-route classification, and multi-quote aggregation. Adapts Squid Router (Axelar-backed, wide chain coverage) and Across Protocol (UMA optimistic-oracle, fastest for EVM-to-EVM pairs). Includes `glide-internal` — the same-tenant vault hop that is free and instant.
+
+Pure functions, no IO. Actual SDK calls live in `apps/web`.
+
+## Install
+
+```bash
+npm install @glideco/crosschain-bridge
+```
+
+[npmjs.com/package/@glideco/crosschain-bridge](https://www.npmjs.com/package/@glideco/crosschain-bridge)
+
+## Why two adapters
+
+Across Protocol is cheaper and faster on the EVM-to-EVM common case. Squid covers the rest: EVM ↔ Solana, EVM ↔ Stellar, EVM ↔ Cosmos, and Solana ↔ Stellar. By classifying the chain pair first and only quoting the applicable adapter, the smart-router avoids sending a cross-chain quote to Across for a Base → Solana transfer where Across has no coverage.
+
+`glide-internal` appears in the bridge ID set so the smart-router can include same-tenant vault hops in candidate scoring without special-casing. A same-chain pair resolves to `['glide-internal']` — no bridge call needed.
+
+## Bridge route classification
+
+```ts
+import { routeCandidates, isBridgeable } from '@glideco/crosschain-bridge';
+
+routeCandidates('base', 'arb');  // ['across', 'squid'] — EVM↔EVM, Across preferred
+routeCandidates('base', 'sol');  // ['squid']           — Squid only
+routeCandidates('sol', 'stellar'); // ['squid']         — Squid only
+routeCandidates('eth', 'eth');   // ['glide-internal']  — same-chain
+
+isBridgeable('base', 'sol');  // true
+isBridgeable('sol', 'tempo'); // false — tempo not in Squid's chain set
+```
+
+The Across-eligible chains are `eth`, `base`, `arb`, `op`, `polygon`. Squid additionally covers `sol`, `tempo`, `stellar`.
+
+## Quoting
+
+```ts
+import type { BridgeQuoteRequest } from '@glideco/crosschain-bridge';
+
+const req: BridgeQuoteRequest = {
+  fromChain: 'base',
+  toChain: 'arb',
+  fromToken: 'USDC',
+  amountIn: '100000000',   // 100 USDC in 6-decimal units
+  fromAddress: '0xSENDER',
+  toAddress: '0xRECIPIENT',
+  slippageBps: 50,          // 0.5%
+  bridges: ['across'],      // restrict to one adapter
+};
+
+// Quote the adapter in apps/web; the result shape is:
+// {
+//   bridge: 'across',
+//   fromChain: 'base', toChain: 'arb',
+//   fromToken: 'USDC', toToken: 'USDC',
+//   amountIn: '100000000', amountOutMin: '99940000',
+//   bridgeFee: '60000',
+//   etaSeconds: 8,
+//   routePayload: { ... },   // opaque, passed to dispatch
+//   expiresAt: '2026-04-30T14:22:30Z',
+// }
+```
+
+## Quote aggregation
+
+```ts
+import { aggregateQuotes } from '@glideco/crosschain-bridge';
+
+// Combine quotes from both adapters; pick the cheapest fresh one.
+const { best, all, expired } = aggregateQuotes([squidQuote, acrossQuote]);
+
+// best.bridge → 'across' (lower bridgeFee)
+// expired → quotes past their expiresAt
+```
+
+`aggregateQuotes` sorts by `bridgeFee` ASC using `BigInt` comparison (avoids IEEE-754 precision loss on large token amounts), with `etaSeconds` as a tiebreaker. It throws when all quotes are stale — the caller must re-quote rather than dispatch a stale route payload.
+
+## Dispatch
+
+After picking a quote, wrap it in a `BridgeDispatchRequest` with the idempotency key and Glide audit fields before passing it to the adapter in `apps/web`:
+
+```ts
+import type { BridgeDispatchRequest } from '@glideco/crosschain-bridge';
+
+const dispatch: BridgeDispatchRequest = {
+  quote: best,
+  idempotencyKey: 'pay_2026_04_30_invoice_099',
+  grantId: 'd4e5f6a7-b8c9-0123-abcd-ef1234567890',
+  correlationId: 'mcp_audit_9a8b7c6d',
+};
+
+// apps/web routes to squid-sdk or across-sdk based on dispatch.quote.bridge
+```
+
+The dispatch result carries `status: 'pending' | 'in_flight' | 'completed' | 'failed' | 'refunded'` and optional `fromTxHash` / `toTxHash`. The `crypto-send-discover-destination` Inngest function in `apps/web` polls for `toTxHash` on cross-chain rows until the destination settles or the 24h ageout fires.
+
+## Reading list
+
+- [`@glideco/smart-router`](/docs/oss/packages/smart-router) — consumes bridge quotes as `RouteCandidate[]` entries for fee comparison against direct rails.
+- [Wallet-side send design](/docs/designs/cross-chain-send) — how Particle UA and CCTP v1/v2 + Wormhole bridge addresses fit into the confirmation pipeline.
+- [Source on GitHub](https://github.com/darshanbathija/axtior-neobank/tree/main/packages/crosschain-bridge)

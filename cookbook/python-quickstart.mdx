@@ -1,0 +1,173 @@
+---
+title: "Python quickstart"
+description: "Python httpx wrapper around the MCP gateway. `python src/main.py` — parsed receipt in stdout in under 10 minutes."
+icon: "code"
+---
+
+This recipe is a minimal Python project that authenticates against the Glide MCP gateway using `httpx` and `python-jose`, calls `accounts.balance`, and initiates a payment. Audience: Python engineers who want a typed, runnable baseline before wiring Glide into an existing agent or automation pipeline.
+
+## Prerequisites
+
+- Python 3.11+.
+- `pip` or a virtualenv manager (`uv` recommended).
+- Glide running locally per the [main quickstart](/oss/quickstart), or access to a hosted instance.
+- `MCP_TOKEN_VERIFIER_DEV_SECRET` set in your shell or `.env`.
+
+## Steps
+
+### 1. Clone the example
+
+```bash
+git clone https://github.com/darshanbathija/axtior-neobank.git
+cd axtior-neobank/examples/python-quickstart
+```
+
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+`requirements.txt`:
+
+```
+httpx==0.27.0
+python-jose[cryptography]==3.3.0
+pydantic==2.7.1
+python-dotenv==1.0.1
+```
+
+### 3. Set environment variables
+
+```bash
+cp .env.example .env
+```
+
+```bash
+# .env
+GLIDE_MCP_URL=http://localhost:8787
+GLIDE_DEV_SECRET=your_32_byte_hex_secret_here
+GLIDE_AGENT_ID=agent_py_demo
+GLIDE_ACCOUNT_ID=acc_demo_01
+```
+
+### 4. Review the auth module
+
+`src/auth.py` mints a short-lived HS256 JWT for dev. In production, replace it with an `httpx` `client_credentials` call against your Ory Hydra endpoint.
+
+```python
+# src/auth.py
+import time, os
+from jose import jwt
+
+def get_token() -> str:
+    secret = os.environ["GLIDE_DEV_SECRET"]
+    now = int(time.time())
+    payload = {
+        "sub": os.environ["GLIDE_AGENT_ID"],
+        "aud": "glide-mcp",
+        "iat": now,
+        "exp": now + 300,
+    }
+    return jwt.encode(payload, secret, algorithm="HS256")
+```
+
+### 5. Review the RPC client
+
+`src/rpc.py` wraps a single synchronous `httpx.post` call. It raises `GlideRPCError` on JSON-RPC errors, preserving the `code` and `data` fields so callers can distinguish policy rejections (`-32003`) from 5xx errors.
+
+```python
+# src/rpc.py (excerpt)
+import httpx, os, uuid
+from dataclasses import dataclass
+from auth import get_token
+
+@dataclass
+class GlideRPCError(Exception):
+    message: str
+    code: int
+    data: dict | None = None
+
+def call(endpoint: str, method: str, arguments: dict) -> dict:
+    token = get_token()
+    url = f"{os.environ['GLIDE_MCP_URL']}/mcp/{endpoint}"
+    body = {
+        "jsonrpc": "2.0",
+        "id": str(uuid.uuid4()),
+        "method": "tools/call",
+        "params": {"name": method, "arguments": arguments},
+    }
+    r = httpx.post(url, json=body, headers={"Authorization": f"Bearer {token}"}, timeout=30)
+    r.raise_for_status()
+    resp = r.json()
+    if "error" in resp:
+        raise GlideRPCError(
+            message=resp["error"]["message"],
+            code=resp["error"]["code"],
+            data=resp["error"].get("data"),
+        )
+    return resp["result"]
+```
+
+### 6. Run the example
+
+```bash
+python src/main.py
+```
+
+`src/main.py` checks the gateway health, calls `accounts.balance`, then calls `payments.initiate` with a $2.00 test payment:
+
+```python
+# src/main.py (excerpt)
+from rpc import call, GlideRPCError
+import os
+
+balance = call("read", "accounts.balance", {"accountId": os.environ["GLIDE_ACCOUNT_ID"]})
+print(f"balance: {balance['availableUsdc']} USDC")
+
+try:
+    receipt = call("write", "payments.initiate", {
+        "fromAccountId": os.environ["GLIDE_ACCOUNT_ID"],
+        "toAddress": "0x742d35Cc6634C0532925a3b8D4C9C5E9F2b4D6A1",
+        "amountUsdc": "2.00",
+        "memo": "py-quickstart test",
+        "idempotencyKey": "py-demo-001",
+    })
+    print(f"receipt: {receipt['receiptId']} status={receipt['status']}")
+except GlideRPCError as e:
+    print(f"rpc error {e.code}: {e.message}")
+```
+
+## Run it
+
+```bash
+python src/main.py
+```
+
+Expected output:
+
+```
+[glide-py] gateway ok
+[glide-py] balance: 1000.00 USDC (acc_demo_01)
+[glide-py] receipt: rcpt_01hwzk4n3mbt6c9a5vzd7qp2xr status=completed
+[glide-py] txHash: 0xabc...def chain=base
+```
+
+## Extend it
+
+- Wrap `main.py` in a FastAPI route for a payment-initiation microservice.
+- Replace the dev HMAC token with a production Ory `client_credentials` grant by editing `src/auth.py`.
+- Add `pydantic` models for `Receipt` and validate the response to catch schema drift early.
+- Wire `audit.stream` into a Kafka producer to feed a downstream event bus.
+- Use `httpx.AsyncClient` and `asyncio` for concurrent multi-account balance checks.
+
+## Source
+
+[github.com/darshanbathija/axtior-neobank/tree/main/examples/python-quickstart](https://github.com/darshanbathija/axtior-neobank/tree/main/examples/python-quickstart)
+
+## Reading list
+
+- [Agent platform quickstart](/oss/headless/quickstart) — full `apps/mcp` bring-up and three endpoint scopes.
+- [OAuth flow](/oss/headless/oauth-flow) — production JWT issuance via Ory Hydra.
+- [Receipt schema](/oss/standards/receipt) — every field and its semantics.
+- [Money-safety contracts](/oss/concepts/money-safety-contracts) — the F-rules every payment path enforces.
